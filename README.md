@@ -7,6 +7,6 @@ This is a PyTorch(0.4.0) implementation of [Deep Ordinal Regression Network for 
 ### TODO
 - [x] DORN model in nyu and kitti
 - [x] Training DORN on nyu and kitti datasets
-- [x] Results evaluation on nyu test set
+- [] Results evaluation on nyu test set
 - [x] Calculate alpha and beta in nyu dataset
 - [x] Realize the ordinal loss in paper 
