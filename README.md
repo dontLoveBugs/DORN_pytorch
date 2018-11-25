@@ -3,3 +3,10 @@
 
 ### Introduction
 This is a PyTorch(0.4.0) implementation of [Deep Ordinal Regression Network for Monocular Depth Estimation](http://arxiv.org/abs/1806.02446). The train script will be provided after soon!
+
+### TODO
+- [x] DORN model in nyu and kitti
+- [x] Training DORN on nyu and kitti datasets
+- [x] Results evaluation on nyu test set
+- [x] Calculate alpha and beta in nyu dataset
+- [x] Realize the ordinal loss in paper 
