@@ -39,13 +39,13 @@ class FullImageEncoder(nn.Module):
 
     def forward(self, x):
         x1 = self.global_pooling(x)
-        print('# x1 size:', x1.size())
+        # print('# x1 size:', x1.size())
         x2 = self.dropout(x1)
         x3 = x2.view(-1, 2048 * 6 * 5)
         x4 = self.relu(self.global_fc(x3))
-        print('# x4 size:', x4.size())
+        # print('# x4 size:', x4.size())
         x4 = x4.view(-1, 512, 1, 1)
-        print('# x4 size:', x4.size())
+        # print('# x4 size:', x4.size())
         x5 = self.conv1(x4)
         out = self.upsample(x5)
         return out
@@ -84,8 +84,9 @@ class SceneUnderstandingModule(nn.Module):
             nn.Conv2d(512 * 5, 2048, 1),
             nn.ReLU(inplace=True),
             nn.Dropout2d(p=0.5),
-            nn.Conv2d(2048, 136, 1),  # KITTI 142 NYU 136
-            nn.UpsamplingBilinear2d(scale_factor=8)
+            nn.Conv2d(2048, 136, 1),  # KITTI 142 NYU 136 In paper, K = 80 is best, so use 160 is good!
+            # nn.UpsamplingBilinear2d(scale_factor=8)
+            nn.UpsamplingBilinear2d(size=(257, 353))
         )
 
     def forward(self, x):
@@ -97,7 +98,7 @@ class SceneUnderstandingModule(nn.Module):
         x5 = self.aspp4(x)
 
         x6 = torch.cat((x1, x2, x3, x4, x5), dim=1)
-        print('cat x6 size:', x6.size())
+        # print('cat x6 size:', x6.size())
         out = self.concat_process(x6)
         return out
 
@@ -107,20 +108,29 @@ class OrdinalRegressionLayer(nn.Module):
         super(OrdinalRegressionLayer, self).__init__()
 
     def forward(self, x):
+        '''
+        :param x: N X H X W X C, N is batch_size, C is channels of features
+        :return: ord_labels is ordinal outputs for each spatial locations , size is N x H X W X C (C = 2K, K is interval of SID)
+                 decode_label is the ordinal labels for each position of Image I
+        '''
         N, C, H, W = x.size()
-        ord_labels = x.clone()
         if torch.cuda.is_available():
             decode_label = torch.zeros((N, 1, H, W), dtype=torch.float32).cuda()
+            ord_labels = torch.zeros((N, C // 2, H, W), dtype=torch.float32).cuda()
         else:
             decode_label = torch.zeros((N, 1, H, W), dtype=torch.float32)
-        print(decode_label)
+            ord_labels = torch.zeros((N, C // 2, H, W), dtype=torch.float32)
+        # print('#1 decode size:', decode_label.size())
         ord_num = C // 2
         for i in range(ord_num):
-            ord_i = ord_labels[:, 2 * i:2 * (i + 1), :, :]
-            # ord_i = nn.functional.softmax(ord_i, dim=1)
-            ord_labels[:, 2 * i:2 * (i + 1), :, :] = ord_i
-            decode_label = decode_label + torch.argmax(ord_i, dim=1).float()  # axis -> dim
+            ord_i = x[:, 2 * i:2 * i + 2, :, :]
+            ord_i = nn.functional.softmax(ord_i, dim=1)  # compute P(w, h) in paper
+            ord_i = ord_i[:, 1, :, :]
+            ord_labels[:, i, :, :] = ord_i
+            # print('ord_i >= 0.5 size:', (ord_i >= 0.5).size())
+            decode_label += (ord_i >= 0.5).view(N, 1, H, W).float()  # sum(n(p_k >= 0.5))
 
+        # print('decode_label size:', decode_label.size())
         return decode_label, ord_labels
 
 
@@ -182,20 +192,20 @@ class ResNet(nn.Module):
         x = self.bn1(x)
         x = self.relu(x)
 
-        print('conv1:', x.size())
+        # print('conv1:', x.size())
 
         x = self.maxpool(x)
 
-        print('pool:', x.size())
+        # print('pool:', x.size())
 
         x1 = self.layer1(x)
-        print('layer1 size:', x1.size())
+        # print('layer1 size:', x1.size())
         x2 = self.layer2(x1)
-        print('layer2 size:', x2.size())
+        # print('layer2 size:', x2.size())
         x3 = self.layer3(x2)
-        print('layer3 size:', x3.size())
+        # print('layer3 size:', x3.size())
         x4 = self.layer4(x3)
-        print('layer4 size:', x4.size())
+        # print('layer4 size:', x4.size())
         return x4
 
 
@@ -211,9 +221,9 @@ class DORN(nn.Module):
 
     def forward(self, x):
         x1 = self.feature_extractor(x)
-        print(x1.size())
+        # print(x1.size())
         x2 = self.aspp_module(x1)
-        print('DORN x2 size:', x2.size())
+        # print('DORN x2 size:', x2.size())
         depth_labels, ord_labels = self.orl(x2)
         return depth_labels, ord_labels
 

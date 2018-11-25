@@ -76,25 +76,34 @@ class ordLoss(nn.Module):
         """
         # assert pred.dim() == target.dim()
         N, C, H, W = ord_labels.size()
-        ord_num = C // 2
+        ord_num = C
+        # print('ord_num = ', ord_num)
 
-        fai = 0.0
+        self.loss = 0.0
 
         for k in range(ord_num):
             '''
             p^k_(w, h) = e^y(w, h, 2k+1) / [e^(w, h, 2k) + e^(w, h, 2k+1)]
             '''
-            p_k = ord_labels[:, 2 * (k + 1), :, :]
+            p_k = ord_labels[:, k, :, :]
+            p_k = p_k.view(N, 1, H, W)
 
             mask_0 = (target <= k).detach()
             mask_1 = (target > k).detach()
+            # print('p_k size:', p_k.size())
+            # print('mask 0 size:', mask_0.size())
+            # print('mask 1 size:', mask_1.size())
             '''
             对每个像素而言，
             如果k小于l(w, h), log(p_k)
             如果k大于l(w, h), log(1-p_k)
             '''
-            fai += torch.log(p_k[mask_0]) + torch.log(1 - p_k[mask_1])
 
-        # N = N * H * W
-        self.loss = - torch.mean(fai)
+            one = torch.ones(p_k[mask_1].size())
+            if torch.cuda.is_available():
+                one = one.cuda()
+            self.loss += torch.sum(torch.log(p_k[mask_0])) + torch.sum(torch.log(one - p_k[mask_1]))
+
+        N = N * H * W
+        self.loss /= N
         return self.loss
