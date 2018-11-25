@@ -2,7 +2,7 @@
 
 
 ### Introduction
-This is a PyTorch(0.4.0) implementation of [Deep Ordinal Regression Network for Monocular Depth Estimation](http://arxiv.org/abs/1806.02446). The train script will be aviliable after soon!
+This is a PyTorch(0.4.0) implementation of [Deep Ordinal Regression Network for Monocular Depth Estimation](http://arxiv.org/abs/1806.02446). The train script will be available after soon!
 
 ### TODO
 - [x] DORN model in nyu and kitti
