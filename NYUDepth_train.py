@@ -148,7 +148,7 @@ def train(train_loader, model, criterion, optimizer, epoch, logger):
     end = time.time()
 
     batch_num = len(train_loader)
-    current_step = batch_num * args.batch_size
+    current_step = batch_num * args.batch_size * epoch
 
     for i, (input, target) in enumerate(train_loader):
         lr = utils.update_ploy_lr(optimizer, args.lr, current_step, args.max_iter)
