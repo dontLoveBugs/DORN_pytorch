@@ -187,15 +187,17 @@ def train(train_loader, model, criterion, optimizer, epoch, logger):
             print('Train Epoch: {0} [{1}/{2}]\t'
                   't_Data={data_time:.3f}({average.data_time:.3f}) '
                   't_GPU={gpu_time:.3f}({average.gpu_time:.3f})\n\t'
-                  'RMSE={result.rmse:.2f}({average.rmse:.2f}) '
-                  'RML={result.absrel:.2f}({average.absrel:.2f}) '
+                  'Loss={loss:.3f} '
+                  'RMSE={result.rmse:.3f}({average.rmse:.3f}) '
+                  'RML={result.absrel:.3f}({average.absrel:.3f}) '
                   'Log10={result.lg10:.3f}({average.lg10:.3f}) '
                   'Delta1={result.delta1:.3f}({average.delta1:.3f}) '
                   'Delta2={result.delta2:.3f}({average.delta2:.3f}) '
                   'Delta3={result.delta3:.3f}({average.delta3:.3f})'.format(
-                epoch, i + 1, len(train_loader), data_time=data_time,
+                epoch, i + 1, len(train_loader), data_time=data_time, loss=loss.item(),
                 gpu_time=gpu_time, result=result, average=average_meter.average()))
             current_step = epoch * batch_num + i
+            logger.add_scalar('Train/Loss', loss.item(), current_step)
             logger.add_scalar('Train/RMSE', result.rmse, current_step)
             logger.add_scalar('Train/rml', result.absrel, current_step)
             logger.add_scalar('Train/Log10', result.lg10, current_step)

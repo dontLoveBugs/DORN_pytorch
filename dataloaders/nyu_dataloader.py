@@ -5,8 +5,7 @@ import dataloaders.transforms as transforms
 from dataloaders.dataloader import MyDataloader
 
 iheight, iwidth = 480, 640  # raw image size
-min, max = 0.0, 10.0  # NYU Depth的深度值最小为0 最大为10
-alpha, beta = 0.1, 10.0
+alpha, beta = 0.02, 10.0  # NYU Depth, min depth is 0.02m, max depth is 10.0m
 K = 68  # NYU is 68, but in paper, 80 is good
 
 '''
@@ -53,10 +52,28 @@ class NYUDataset(MyDataloader):
 
         return rgb_np, depth_np
 
-    # def depth_sid(self, depth, alpha, beta):
-    #     internal =
-    #     return
-
     def get_depth_sid(self, depth):
-        k = K * torch.log(depth / alpha) / torch.log(beta / alpha)
-        return k.int()
+        k = K * np.log(depth / alpha) / np.log(beta / alpha)
+        k = k.astype(np.int32)
+        return k
+
+
+"""
+After obtaining ordinal labels for each position od Image, 
+the predicted depth value d(w, h) can be decoded as below.
+"""
+
+
+def get_depth_sid(depth_labels):
+    if torch.cuda.is_available():
+        alpha_ = torch.tensor(0.02).cuda()
+        beta_ = torch.tensor(10.0).cuda()
+        K_ = torch.tensor(68.0).cuda()
+    else:
+        alpha_ = torch.tensor(0.02)
+        beta_ = torch.tensor(10.0)
+        K_ = torch.tensor(68.0)
+
+    t = torch.exp(torch.log(alpha_) + torch.log(beta_ / alpha_) * depth_labels / K_)
+    depth = t
+    return depth
