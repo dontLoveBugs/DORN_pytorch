@@ -55,10 +55,8 @@ def main():
     global args, best_result, output_directory
 
     if torch.cuda.device_count() > 1:
-        # args.batch_size = args.batch_size * torch.cuda.device_count()
-
-        train_loader = NYUDepth_loader(args.data_path, batch_size=args.batch_size * torch.cuda.device_count(),
-                                       isTrain=True)
+        args.batch_size = args.batch_size * torch.cuda.device_count()
+        train_loader = NYUDepth_loader(args.data_path, batch_size=args.batch_size, isTrain=True)
         val_loader = NYUDepth_loader(args.data_path, batch_size=args.batch_size, isTrain=False)
     else:
         train_loader = NYUDepth_loader(args.data_path, batch_size=args.batch_size, isTrain=True)
@@ -113,7 +111,7 @@ def main():
     logger = SummaryWriter(log_path)
 
     for epoch in range(start_epoch, args.epochs):
-        lr = utils.adjust_learning_rate(optimizer, args.lr, epoch)  # 更新学习率
+        # lr = utils.adjust_learning_rate(optimizer, args.lr, epoch)  # 更新学习率
 
         train(train_loader, model, criterion, optimizer, epoch, logger)  # train for one epoch
         result, img_merge = validate(val_loader, model, epoch, logger)  # evaluate on validation set
@@ -150,22 +148,25 @@ def train(train_loader, model, criterion, optimizer, epoch, logger):
     end = time.time()
 
     batch_num = len(train_loader)
+    current_step = batch_num * args.batch_size()
 
     for i, (input, target) in enumerate(train_loader):
-
-        # itr_count += 1
+        lr = utils.update_ploy_lr(optimizer, args.ls, current_step, args.max_iter)
         input, target = input.cuda(), target.cuda()
-        # print('input size  = ', input.size())
-        # print('target size = ', target.size())
-        torch.cuda.synchronize()
         data_time = time.time() - end
+
+        current_step += input.data.shape[0]
+
+        if current_step == args.max_iter:
+            logger.close()
+            print('Iteration finished!')
+            break
+
+        torch.cuda.synchronize()
 
         # compute pred
         end = time.time()
         pred_d, pred_ord = model(input)  # @wx 注意输出
-
-        # print('pred_d size:', pred_d.size())
-        # print('pred_ord size:', pred_ord.size())
 
         loss = criterion(pred_ord, target)
         optimizer.zero_grad()
@@ -185,6 +186,7 @@ def train(train_loader, model, criterion, optimizer, epoch, logger):
         if (i + 1) % args.print_freq == 0:
             print('=> output: {}'.format(output_directory))
             print('Train Epoch: {0} [{1}/{2}]\t'
+                  'learning_rate={lr:.8f} '
                   't_Data={data_time:.3f}({average.data_time:.3f}) '
                   't_GPU={gpu_time:.3f}({average.gpu_time:.3f})\n\t'
                   'Loss={loss:.3f} '
@@ -194,9 +196,10 @@ def train(train_loader, model, criterion, optimizer, epoch, logger):
                   'Delta1={result.delta1:.3f}({average.delta1:.3f}) '
                   'Delta2={result.delta2:.3f}({average.delta2:.3f}) '
                   'Delta3={result.delta3:.3f}({average.delta3:.3f})'.format(
-                epoch, i + 1, len(train_loader), data_time=data_time, loss=loss.item(),
+                epoch, i + 1, batch_num, lr, data_time=data_time, loss=loss.item(),
                 gpu_time=gpu_time, result=result, average=average_meter.average()))
-            current_step = epoch * batch_num + i
+
+            logger.add_scalar('Learning_rate', lr, current_step)
             logger.add_scalar('Train/Loss', loss.item(), current_step)
             logger.add_scalar('Train/RMSE', result.rmse, current_step)
             logger.add_scalar('Train/rml', result.absrel, current_step)

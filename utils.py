@@ -19,8 +19,9 @@ def parse_command():
     parser.add_argument('--resume', default='', type=str, metavar='PATH',
                         help='path to latest checkpoint (default: none)')
     parser.add_argument('-b', '--batch-size', default=8, type=int, help='mini-batch size (default: 4)')
-    parser.add_argument('--epochs', default=100, type=int, metavar='N',
+    parser.add_argument('--epochs', default=200, type=int, metavar='N',
                         help='number of total epochs to run (default: 15)')
+    parser.add_argument('--max_iter', default=9000000, type=int, metavar='miter')
     parser.add_argument('--lr', '--learning-rate', default=0.0001, type=float,
                         metavar='LR', help='initial learning rate (default 0.0001)')
     parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
@@ -60,15 +61,6 @@ def save_checkpoint(state, is_best, epoch, output_directory):
             os.remove(prev_checkpoint_filename)
 
 
-# def adjust_learning_rate(optimizer, lr_init, epoch):
-#     """使用caffe中的poly机制 lr_base = 0.0001 power 0.9"""
-#     if epoch % 10:
-#         lr = lr_init * 0.5
-#     else:
-#         lr = lr_init
-#     for param_group in optimizer.param_groups:
-#         param_group['lr'] = lr
-
 def adjust_learning_rate(optimizer, lr_init, epoch):
     """Sets the learning rate to the initial LR decayed by 10 every 5 epochs"""
     lr = lr_init * (0.1 ** (epoch // 5))
@@ -77,6 +69,14 @@ def adjust_learning_rate(optimizer, lr_init, epoch):
     print('*********************************************')
     print('  epoch[%d], learning rate = %f' % (epoch, lr))
     print('*********************************************')
+
+
+# ploy策略的学习率更新
+def update_ploy_lr(optimizer, initialized_lr, current_step, max_step, power=0.9):
+    lr = initialized_lr * ((1 - float(current_step) / max_step) ** (power))
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+    return lr
 
 
 def colored_depthmap(depth, d_min=None, d_max=None):
