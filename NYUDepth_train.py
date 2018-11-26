@@ -148,10 +148,10 @@ def train(train_loader, model, criterion, optimizer, epoch, logger):
     end = time.time()
 
     batch_num = len(train_loader)
-    current_step = batch_num * args.batch_size()
+    current_step = batch_num * args.batch_size
 
     for i, (input, target) in enumerate(train_loader):
-        lr = utils.update_ploy_lr(optimizer, args.ls, current_step, args.max_iter)
+        lr = utils.update_ploy_lr(optimizer, args.lr, current_step, args.max_iter)
         input, target = input.cuda(), target.cuda()
         data_time = time.time() - end
 
@@ -196,7 +196,7 @@ def train(train_loader, model, criterion, optimizer, epoch, logger):
                   'Delta1={result.delta1:.3f}({average.delta1:.3f}) '
                   'Delta2={result.delta2:.3f}({average.delta2:.3f}) '
                   'Delta3={result.delta3:.3f}({average.delta3:.3f})'.format(
-                epoch, i + 1, batch_num, lr, data_time=data_time, loss=loss.item(),
+                epoch, i + 1, batch_num, lr=lr, data_time=data_time, loss=loss.item(),
                 gpu_time=gpu_time, result=result, average=average_meter.average()))
 
             logger.add_scalar('Learning_rate', lr, current_step)
