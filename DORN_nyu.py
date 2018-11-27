@@ -2,6 +2,7 @@
 # @Time    : 2018/11/22 12:33
 # @Author  : Wang Xin
 # @Email   : wangxin_buaa@163.com
+import os
 
 import torch
 import torch.nn as nn
@@ -108,11 +109,11 @@ class OrdinalRegressionLayer(nn.Module):
         super(OrdinalRegressionLayer, self).__init__()
 
     def forward(self, x):
-        '''
+        """
         :param x: N X H X W X C, N is batch_size, C is channels of features
         :return: ord_labels is ordinal outputs for each spatial locations , size is N x H X W X C (C = 2K, K is interval of SID)
                  decode_label is the ordinal labels for each position of Image I
-        '''
+        """
         N, C, H, W = x.size()
         if torch.cuda.is_available():
             decode_label = torch.zeros((N, 1, H, W), dtype=torch.float32).cuda()
@@ -130,8 +131,33 @@ class OrdinalRegressionLayer(nn.Module):
             # print('ord_i >= 0.5 size:', (ord_i >= 0.5).size())
             decode_label += (ord_i >= 0.5).view(N, 1, H, W).float()  # sum(n(p_k >= 0.5))
 
+        """
+        replace iter with matrix operation
+        fast speed methods
+        """
+        A = x[:, ::2, :, :].clone()
+        B = x[:, 1::2, :, :].clone()
+        # print('A size:', A.size())
+        # print('B size:', B.size())
+
+        A = A.view(N, 1, ord_num * H * W)
+        B = B.view(N, 1, ord_num * H * W)
+
+        C = torch.cat((A, B), dim=1)
+
+        ord_c = nn.functional.softmax(C, dim=1)
+
+        # print('C size:', C.size())
+        # print('ord_c size:', ord_c.size())
+
+        ord_c1 = ord_c[:, 1, :].clone()
+        ord_c1 = ord_c1.view(-1, ord_num, H, W)
+        decode_c = torch.sum(ord_c1, dim=1).view(-1, 1, H, W)
+        # print('ord_c1 size:', ord_c1.size())
+        # print('decode_c size:', decode_c.size())
+
         # print('decode_label size:', decode_label.size())
-        return decode_label, ord_labels
+        return decode_c, ord_c1
 
 
 class ResNet(nn.Module):
@@ -227,6 +253,8 @@ class DORN(nn.Module):
         depth_labels, ord_labels = self.orl(x2)
         return depth_labels, ord_labels
 
+
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"  # 默认使用GPU 0
 
 if __name__ == "__main__":
     model = DORN()

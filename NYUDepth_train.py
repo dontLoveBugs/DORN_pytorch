@@ -77,6 +77,7 @@ def main():
             model_dict = checkpoint['model'].state_dict()
         model = DORN_nyu.DORN()
         model.load_state_dict(model_dict)
+        del model_dict # 删除载入的模型
         # 使用SGD进行优化
         optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
 
