@@ -77,11 +77,20 @@ def main():
             model_dict = checkpoint['model'].state_dict()
         model = DORN_nyu.DORN()
         model.load_state_dict(model_dict)
-        del model_dict # 删除载入的模型
         # 使用SGD进行优化
-        optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+
+        # in paper, aspp module's lr is 20 bigger than the other modules
+        aspp_params = list(map(id, model.aspp_module.parameters()))
+        base_params = filter(lambda p: id(p) not in aspp_params, model.parameters())
+        # optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+        optimizer = torch.optim.SGD([
+            {'params': base_params},
+            {'params': model.aspp_module.parameters(), 'lr': args.lr * 20},
+        ],  lr = args.lr, momentum = args.momentum)
 
         print("=> loaded checkpoint (epoch {})".format(checkpoint['epoch']))
+        del checkpoint # 删除载入的模型
+        del model_dict
     else:
         print("=> creating Model")
         model = DORN_nyu.DORN()
@@ -167,13 +176,16 @@ def train(train_loader, model, criterion, optimizer, epoch, logger):
 
         # compute pred
         end = time.time()
-        pred_d, pred_ord = model(input)  # @wx 注意输出
+        with torch.autograd.detect_anomaly():
+            pred_d, pred_ord = model(input)  # @wx 注意输出
 
-        loss = criterion(pred_ord, target)
-        optimizer.zero_grad()
-        loss.backward()  # compute gradient and do SGD step
-        optimizer.step()
+            loss = criterion(pred_ord, target)
+            optimizer.zero_grad()
+            loss.backward()  # compute gradient and do SGD step
+            optimizer.step()
+
         torch.cuda.synchronize()
+
         gpu_time = time.time() - end
 
         # measure accuracy and record loss

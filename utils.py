@@ -16,9 +16,9 @@ cmap = plt.cm.jet
 def parse_command():
     import argparse
     parser = argparse.ArgumentParser(description='NYUDepth')
-    parser.add_argument('--resume', default='', type=str, metavar='PATH',
-                        help='path to latest checkpoint (default: none)')
-    parser.add_argument('-b', '--batch-size', default=8, type=int, help='mini-batch size (default: 4)')
+    parser.add_argument('--resume', default='./run/run_6/model_best.pth.tar', type=str, metavar='PATH',
+                        help='path to latest checkpoint (default: ./run/run_1/checkpoint-5.pth.tar)')
+    parser.add_argument('-b', '--batch-size', default=6, type=int, help='mini-batch size (default: 4)')
     parser.add_argument('--epochs', default=200, type=int, metavar='N',
                         help='number of total epochs to run (default: 15)')
     parser.add_argument('--max_iter', default=9000000, type=int, metavar='miter')
@@ -74,8 +74,14 @@ def adjust_learning_rate(optimizer, lr_init, epoch):
 # ploy策略的学习率更新
 def update_ploy_lr(optimizer, initialized_lr, current_step, max_step, power=0.9):
     lr = initialized_lr * ((1 - float(current_step) / max_step) ** (power))
+    idx = 0
     for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
+        if idx == 0: # base params
+            param_group['lr'] = lr
+        else:
+            param_group['lr'] = lr * 20
+        # print(idx, lr, torch.cuda.current_device())
+        idx += 1
     return lr
 
 

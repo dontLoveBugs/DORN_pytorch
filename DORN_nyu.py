@@ -115,6 +115,8 @@ class OrdinalRegressionLayer(nn.Module):
                  decode_label is the ordinal labels for each position of Image I
         """
         N, C, H, W = x.size()
+        ord_num = C // 2
+
         if torch.cuda.is_available():
             decode_label = torch.zeros((N, 1, H, W), dtype=torch.float32).cuda()
             ord_labels = torch.zeros((N, C // 2, H, W), dtype=torch.float32).cuda()
@@ -122,14 +124,14 @@ class OrdinalRegressionLayer(nn.Module):
             decode_label = torch.zeros((N, 1, H, W), dtype=torch.float32)
             ord_labels = torch.zeros((N, C // 2, H, W), dtype=torch.float32)
         # print('#1 decode size:', decode_label.size())
-        ord_num = C // 2
-        for i in range(ord_num):
-            ord_i = x[:, 2 * i:2 * i + 2, :, :]
-            ord_i = nn.functional.softmax(ord_i, dim=1)  # compute P(w, h) in paper
-            ord_i = ord_i[:, 1, :, :]
-            ord_labels[:, i, :, :] = ord_i
-            # print('ord_i >= 0.5 size:', (ord_i >= 0.5).size())
-            decode_label += (ord_i >= 0.5).view(N, 1, H, W).float()  # sum(n(p_k >= 0.5))
+        # ord_num = C // 2
+        # for i in range(ord_num):
+        #     ord_i = x[:, 2 * i:2 * i + 2, :, :]
+        #     ord_i = nn.functional.softmax(ord_i, dim=1)  # compute P(w, h) in paper
+        #     ord_i = ord_i[:, 1, :, :]
+        #     ord_labels[:, i, :, :] = ord_i
+        #     # print('ord_i >= 0.5 size:', (ord_i >= 0.5).size())
+        #     decode_label += (ord_i >= 0.5).view(N, 1, H, W).float()  # sum(n(p_k >= 0.5))
 
         """
         replace iter with matrix operation
@@ -137,26 +139,18 @@ class OrdinalRegressionLayer(nn.Module):
         """
         A = x[:, ::2, :, :].clone()
         B = x[:, 1::2, :, :].clone()
-        # print('A size:', A.size())
-        # print('B size:', B.size())
 
         A = A.view(N, 1, ord_num * H * W)
         B = B.view(N, 1, ord_num * H * W)
 
         C = torch.cat((A, B), dim=1)
+        # C = torch.clamp(C, min = 1e-8, max = 1e8) # prevent nans
 
         ord_c = nn.functional.softmax(C, dim=1)
-
-        # print('C size:', C.size())
-        # print('ord_c size:', ord_c.size())
 
         ord_c1 = ord_c[:, 1, :].clone()
         ord_c1 = ord_c1.view(-1, ord_num, H, W)
         decode_c = torch.sum(ord_c1, dim=1).view(-1, 1, H, W)
-        # print('ord_c1 size:', ord_c1.size())
-        # print('decode_c size:', decode_c.size())
-
-        # print('decode_label size:', decode_label.size())
         return decode_c, ord_c1
 
 
