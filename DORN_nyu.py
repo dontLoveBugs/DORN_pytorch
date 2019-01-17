@@ -117,12 +117,12 @@ class OrdinalRegressionLayer(nn.Module):
         N, C, H, W = x.size()
         ord_num = C // 2
 
-        if torch.cuda.is_available():
-            decode_label = torch.zeros((N, 1, H, W), dtype=torch.float32).cuda()
-            ord_labels = torch.zeros((N, C // 2, H, W), dtype=torch.float32).cuda()
-        else:
-            decode_label = torch.zeros((N, 1, H, W), dtype=torch.float32)
-            ord_labels = torch.zeros((N, C // 2, H, W), dtype=torch.float32)
+        # if torch.cuda.is_available():
+        #     decode_label = torch.zeros((N, 1, H, W), dtype=torch.float32).cuda()
+        #     ord_labels = torch.zeros((N, C // 2, H, W), dtype=torch.float32).cuda()
+        # else:
+        #     decode_label = torch.zeros((N, 1, H, W), dtype=torch.float32)
+        #     ord_labels = torch.zeros((N, C // 2, H, W), dtype=torch.float32)
         # print('#1 decode size:', decode_label.size())
         # ord_num = C // 2
         # for i in range(ord_num):
@@ -144,7 +144,7 @@ class OrdinalRegressionLayer(nn.Module):
         B = B.view(N, 1, ord_num * H * W)
 
         C = torch.cat((A, B), dim=1)
-        # C = torch.clamp(C, min = 1e-8, max = 1e8) # prevent nans
+        C = torch.clamp(C, min = 1e-8, max = 1e8) # prevent nans
 
         ord_c = nn.functional.softmax(C, dim=1)
 

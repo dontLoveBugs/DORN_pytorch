@@ -8,6 +8,7 @@ import socket
 import time
 import torch
 from tensorboardX import SummaryWriter
+from torch.optim import lr_scheduler
 
 from dataloaders import nyu_dataloader
 from metrics import AverageMeter, Result
@@ -16,9 +17,11 @@ import criteria
 import os
 import torch.nn as nn
 
+import numpy as np
+
 import DORN_nyu
 
-# os.environ["CUDA_VISIBLE_DEVICES"] = "1"  # 默认使用GPU 0
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"  # use single GPU
 
 args = utils.parse_command()
 print(args)
@@ -30,24 +33,24 @@ best_result.set_to_worst()
 def NYUDepth_loader(data_path, batch_size=32, isTrain=True):
     if isTrain:
         traindir = os.path.join(data_path, 'train')
-        print(traindir)
+        print('Train file path is ', traindir)
 
         if os.path.exists(traindir):
             print('Train dataset file path is existed!')
-        trainset = nyu_dataloader.NYUDataset(traindir, type='train')
+        train_set = nyu_dataloader.NYUDataset(traindir, type='train')
         train_loader = torch.utils.data.DataLoader(
-            trainset, batch_size=batch_size, shuffle=True)  # @wx 多线程读取失败
+            train_set, batch_size=batch_size, shuffle=True, num_workers=args.workers, pin_memory=True,
+            worker_init_fn=lambda work_id: np.random.seed(work_id))
         return train_loader
     else:
         valdir = os.path.join(data_path, 'val')
-        print(valdir)
+        print('Test file path is ', valdir)
 
         if os.path.exists(valdir):
             print('Test dataset file path is existed!')
-        valset = nyu_dataloader.NYUDataset(valdir, type='val')
+        val_set = nyu_dataloader.NYUDataset(valdir, type='val')
         val_loader = torch.utils.data.DataLoader(
-            valset, batch_size=1, shuffle=False  # shuffle 测试时是否设置成False batch_size 恒定为1
-        )
+            val_set, batch_size=1, shuffle=False, num_workers=args.workers, pin_memory=True)
         return val_loader
 
 
@@ -55,6 +58,7 @@ def main():
     global args, best_result, output_directory
 
     if torch.cuda.device_count() > 1:
+        print("Let's use", torch.cuda.device_count(), "GPUs!")
         args.batch_size = args.batch_size * torch.cuda.device_count()
         train_loader = NYUDepth_loader(args.data_path, batch_size=args.batch_size, isTrain=True)
         val_loader = NYUDepth_loader(args.data_path, batch_size=args.batch_size, isTrain=False)
@@ -67,52 +71,58 @@ def main():
             "=> no checkpoint found at '{}'".format(args.resume)
         print("=> loading checkpoint '{}'".format(args.resume))
         checkpoint = torch.load(args.resume)
-        # args = checkpoint['args']
-        # print('保留参数：', args)
+
         start_epoch = checkpoint['epoch'] + 1
         best_result = checkpoint['best_result']
-        if torch.cuda.device_count() > 1:
-            model_dict = checkpoint['model'].module.state_dict()  # 如果是多卡训练的要加module
-        else:
-            model_dict = checkpoint['model'].state_dict()
+
+        model_dict = checkpoint['model'].module.state_dict()  # to load the trained model using multi-GPUs
         model = DORN_nyu.DORN()
         model.load_state_dict(model_dict)
-        # 使用SGD进行优化
-
-        # in paper, aspp module's lr is 20 bigger than the other modules
-        aspp_params = list(map(id, model.aspp_module.parameters()))
-        base_params = filter(lambda p: id(p) not in aspp_params, model.parameters())
-        # optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
-        optimizer = torch.optim.SGD([
-            {'params': base_params},
-            {'params': model.aspp_module.parameters(), 'lr': args.lr * 20},
-        ],  lr = args.lr, momentum = args.momentum)
 
         print("=> loaded checkpoint (epoch {})".format(checkpoint['epoch']))
-        del checkpoint # 删除载入的模型
+        del checkpoint  # clear memory
         del model_dict
     else:
         print("=> creating Model")
         model = DORN_nyu.DORN()
         print("=> model created.")
-        optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
         start_epoch = 0
-    # 如果有多GPU 使用多GPU训练
-    if torch.cuda.device_count():
-        print("Let's use", torch.cuda.device_count(), "GPUs!")
-        model = nn.DataParallel(model)
 
+    # in paper, aspp module's lr is 20 bigger than the other modules
+    train_params = [{'params': model.feature_extractor.parameters(), 'lr': args.lr},
+                    {'params': model.aspp_module.parameters(), 'lr': args.lr * 20},
+                    {'params': model.orl.parameters(), 'lr': args.lr}]
+
+    optimizer = torch.optim.SGD(train_params, lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
+
+    # You can use DataParallel() whether you use Multi-GPUs or not
+    model = nn.DataParallel(model)
     model = model.cuda()
 
-    # 定义loss函数
+    # when training, use reduceLROnPlateau to reduce learning rate
+    scheduler = lr_scheduler.ReduceLROnPlateau(
+        optimizer, 'min', patience=args.lr_patience)
+
+    # loss function
     criterion = criteria.ordLoss()
 
-    # 创建保存结果目录文件
+    # create directory path
     output_directory = utils.get_output_directory(args)
     if not os.path.exists(output_directory):
         os.makedirs(output_directory)
     best_txt = os.path.join(output_directory, 'best.txt')
+    config_txt = os.path.join(output_directory, 'config.txt')
 
+    # write training parameters to config file
+    if not os.path.exists(config_txt):
+        with open(config_txt, 'w') as txtfile:
+            args_ = vars(args)
+            args_str = ''
+            for k, v in args_.items():
+                args_str = args_str + str(k) + ':' + str(v) + ',\t\n'
+            txtfile.write(args_str)
+
+    # create log
     log_path = os.path.join(output_directory, 'logs',
                             datetime.now().strftime('%b%d_%H-%M-%S') + '_' + socket.gethostname())
     if os.path.isdir(log_path):
@@ -121,10 +131,13 @@ def main():
     logger = SummaryWriter(log_path)
 
     for epoch in range(start_epoch, args.epochs):
-        # lr = utils.adjust_learning_rate(optimizer, args.lr, epoch)  # 更新学习率
-
         train(train_loader, model, criterion, optimizer, epoch, logger)  # train for one epoch
-        result, img_merge = validate(val_loader, model, epoch, logger)  # evaluate on validation set
+        result, img_merge = validate(val_loader, model, epoch, logger)   # evaluate on validation set
+
+        for i, param_group in enumerate(optimizer.param_groups):
+            old_lr = float(param_group['lr'])
+
+            logger.add_scalar('Lr/lr_' + str(i), old_lr, epoch)
 
         # remember best rmse and save checkpoint
         is_best = result.rmse < best_result.rmse
@@ -132,14 +145,16 @@ def main():
             best_result = result
             with open(best_txt, 'w') as txtfile:
                 txtfile.write(
-                    "epoch={}\nrmse={:.3f}\nrml={:.3f}\nlog10={:.3f}\nd1={:.3f}\nd2={:.3f}\ndd31={:.3f}\nt_gpu={:.4f}\n".
-                    format(epoch, result.rmse, result.absrel, result.lg10, result.delta1, result.delta2, result.delta3,
-                           result.gpu_time))
+                    "epoch={}, rmse={:.3f}, rml={:.3f}, log10={:.3f}, d1={:.3f}, d2={:.3f}, dd31={:.3f}, "
+                    "t_gpu={:.4f}".
+                        format(epoch, result.rmse, result.absrel, result.lg10, result.delta1, result.delta2,
+                               result.delta3,
+                               result.gpu_time))
             if img_merge is not None:
                 img_filename = output_directory + '/comparison_best.png'
                 utils.save_image(img_merge, img_filename)
 
-        # 每个Epoch都保存解雇
+        # save checkpoint for each epoch
         utils.save_checkpoint({
             'args': args,
             'epoch': epoch,
@@ -148,10 +163,13 @@ def main():
             'optimizer': optimizer,
         }, is_best, epoch, output_directory)
 
+        # when rml doesn't fall, reduce learning rate
+        scheduler.step(result.absrel)
+
     logger.close()
 
 
-# 在NYUDepth数据集上训练
+# train
 def train(train_loader, model, criterion, optimizer, epoch, logger):
     average_meter = AverageMeter()
     model.train()  # switch to train mode
@@ -161,16 +179,13 @@ def train(train_loader, model, criterion, optimizer, epoch, logger):
     current_step = batch_num * args.batch_size * epoch
 
     for i, (input, target) in enumerate(train_loader):
-        lr = utils.update_ploy_lr(optimizer, args.lr, current_step, args.max_iter)
-        input, target = input.cuda(), target.cuda()
+
+        if torch.cuda.is_available():
+            input, target = input.cuda(), target.cuda()
+
         data_time = time.time() - end
 
         current_step += input.data.shape[0]
-
-        if current_step == args.max_iter:
-            logger.close()
-            print('Iteration finished!')
-            break
 
         torch.cuda.synchronize()
 
@@ -199,7 +214,6 @@ def train(train_loader, model, criterion, optimizer, epoch, logger):
         if (i + 1) % args.print_freq == 0:
             print('=> output: {}'.format(output_directory))
             print('Train Epoch: {0} [{1}/{2}]\t'
-                  'learning_rate={lr:.8f} '
                   't_Data={data_time:.3f}({average.data_time:.3f}) '
                   't_GPU={gpu_time:.3f}({average.gpu_time:.3f})\n\t'
                   'Loss={loss:.3f} '
@@ -209,10 +223,9 @@ def train(train_loader, model, criterion, optimizer, epoch, logger):
                   'Delta1={result.delta1:.3f}({average.delta1:.3f}) '
                   'Delta2={result.delta2:.3f}({average.delta2:.3f}) '
                   'Delta3={result.delta3:.3f}({average.delta3:.3f})'.format(
-                epoch, i + 1, batch_num, lr=lr, data_time=data_time, loss=loss.item(),
+                epoch, i + 1, batch_num, data_time=data_time, loss=loss.item(),
                 gpu_time=gpu_time, result=result, average=average_meter.average()))
 
-            logger.add_scalar('Learning_rate', lr, current_step)
             logger.add_scalar('Train/Loss', loss.item(), current_step)
             logger.add_scalar('Train/RMSE', result.rmse, current_step)
             logger.add_scalar('Train/rml', result.absrel, current_step)
@@ -221,10 +234,8 @@ def train(train_loader, model, criterion, optimizer, epoch, logger):
             logger.add_scalar('Train/Delta2', result.delta2, current_step)
             logger.add_scalar('Train/Delta3', result.delta3, current_step)
 
-    avg = average_meter.average()
 
-
-# 修改
+# validation
 def validate(val_loader, model, epoch, logger, write_to_file=True):
     average_meter = AverageMeter()
 

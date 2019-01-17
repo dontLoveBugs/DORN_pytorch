@@ -16,18 +16,25 @@ cmap = plt.cm.jet
 def parse_command():
     import argparse
     parser = argparse.ArgumentParser(description='NYUDepth')
-    parser.add_argument('--resume', default='./run/run_6/model_best.pth.tar', type=str, metavar='PATH',
+    parser.add_argument('--resume', default='', type=str, metavar='PATH',
                         help='path to latest checkpoint (default: ./run/run_1/checkpoint-5.pth.tar)')
-    parser.add_argument('-b', '--batch-size', default=6, type=int, help='mini-batch size (default: 4)')
+    parser.add_argument('-b', '--batch-size', default=4, type=int, help='mini-batch size (default: 4)')
     parser.add_argument('--epochs', default=200, type=int, metavar='N',
                         help='number of total epochs to run (default: 15)')
-    parser.add_argument('--max_iter', default=9000000, type=int, metavar='miter')
     parser.add_argument('--lr', '--learning-rate', default=0.0001, type=float,
                         metavar='LR', help='initial learning rate (default 0.0001)')
+    parser.add_argument(
+        '--lr_patience',
+        default=2,
+        type=int,
+        help='Patience of LR scheduler. See documentation of ReduceLROnPlateau.'
+    )
     parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                         help='momentum')
-    parser.add_argument('--weight-decay', '--wd', default=0.0005, type=float,
+    parser.add_argument('--weight_decay', '--wd', default=0.0005, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
+    parser.add_argument('-j', '--workers', default=10, type=int, metavar='N',
+                        help='number of data loading workers (default: 10)')
     parser.add_argument("--data_path", type=str, default="/home/data/model/wangxin/nyudepthv2",
                         help="the root folder of dataset")
     parser.add_argument('--print-freq', '-p', default=10, type=int,
@@ -48,7 +55,7 @@ def get_output_directory(args):
     return save_dir
 
 
-# 保存检查点
+# save checkpoint
 def save_checkpoint(state, is_best, epoch, output_directory):
     checkpoint_filename = os.path.join(output_directory, 'checkpoint-' + str(epoch) + '.pth.tar')
     torch.save(state, checkpoint_filename)
