@@ -1,24 +1,30 @@
 # -*- coding: utf-8 -*-
-# @Time    : 2018/10/23 19:40
-# @Author  : Wang Xin
-# @Email   : wangxin_buaa@163.com
-import os
+"""
+ @Time    : 2019/1/21 15:25
+ @Author  : Wang Xin
+ @Email   : wangxin_buaa@163.com
+"""
+
+from datetime import datetime
 import shutil
 import socket
 import time
-from datetime import datetime
-
-import numpy as np
 import torch
-import torch.nn as nn
 from tensorboardX import SummaryWriter
 from torch.optim import lr_scheduler
 
-import criteria
-import utils
-from dataloaders import nyu_dataloader
+from dataloaders import kitti_dataloader, nyu_dataloader
+from dataloaders.kitti_raw_dataloader import KittiFolder
+from dataloaders.path import Path
 from metrics import AverageMeter, Result
-from network import DORN_nyu
+import utils
+import criteria
+import os
+import torch.nn as nn
+
+import numpy as np
+
+from network import
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"  # use single GPU
 
@@ -29,41 +35,56 @@ best_result = Result()
 best_result.set_to_worst()
 
 
-def NYUDepth_loader(data_path, batch_size=32, isTrain=True):
-    if isTrain:
-        traindir = os.path.join(data_path, 'train')
-        print('Train file path is ', traindir)
-
-        if os.path.exists(traindir):
-            print('Train dataset file path is existed!')
-        train_set = nyu_dataloader.NYUDataset(traindir, type='train')
-        train_loader = torch.utils.data.DataLoader(
-            train_set, batch_size=batch_size, shuffle=True, num_workers=args.workers, pin_memory=True,
-            worker_init_fn=lambda work_id: np.random.seed(work_id))
-        return train_loader
+def create_loader(args):
+    root_dir = Path.db_root_dir(args.dataset)
+    if args.dataset == 'kitti':
+        train_set = KittiFolder(root_dir, mode='train', size=(228, 912))
+        test_set = KittiFolder(root_dir, mode='test', size=(228, 912))
+        train_loader = torch.utils.data.DataLoader(train_set, batch_size=args.batch_size, shuffle=True,
+                                                   num_workers=args.workers, pin_memory=True)
+        test_loader = torch.utils.data.DataLoader(test_set, batch_size=1, shuffle=False,
+                                                  num_workers=args.workers, pin_memory=True)
+        return train_loader, test_loader
     else:
-        valdir = os.path.join(data_path, 'val')
-        print('Test file path is ', valdir)
+        traindir = os.path.join(root_dir, 'train')
+        if os.path.exists(traindir):
+            print('Train dataset "{}" is existed!'.format(traindir))
+        else:
+            print('Train dataset "{}" is not existed!'.format(traindir))
+            exit(-1)
 
-        if os.path.exists(valdir):
-            print('Test dataset file path is existed!')
+        valdir = os.path.join(root_dir, 'val')
+        if os.path.exists(traindir):
+            print('Train dataset "{}" is existed!'.format(valdir))
+        else:
+            print('Train dataset "{}" is not existed!'.format(valdir))
+            exit(-1)
+
+        train_set = nyu_dataloader.NYUDataset(traindir, type='train')
         val_set = nyu_dataloader.NYUDataset(valdir, type='val')
+
+        train_loader = torch.utils.data.DataLoader(
+            train_set, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=True)
+
         val_loader = torch.utils.data.DataLoader(
             val_set, batch_size=1, shuffle=False, num_workers=args.workers, pin_memory=True)
-        return val_loader
+
+        return train_loader, val_loader
 
 
 def main():
     global args, best_result, output_directory
 
+    # set random seed
+    torch.manual_seed(args.manual_seed)
+
     if torch.cuda.device_count() > 1:
         print("Let's use", torch.cuda.device_count(), "GPUs!")
         args.batch_size = args.batch_size * torch.cuda.device_count()
-        train_loader = NYUDepth_loader(args.data_path, batch_size=args.batch_size, isTrain=True)
-        val_loader = NYUDepth_loader(args.data_path, batch_size=args.batch_size, isTrain=False)
     else:
-        train_loader = NYUDepth_loader(args.data_path, batch_size=args.batch_size, isTrain=True)
-        val_loader = NYUDepth_loader(args.data_path, isTrain=False)
+        print("Let's use GPU ", torch.cuda.current_device())
+
+    train_loader, val_loader = create_loader(args)
 
     if args.resume:
         assert os.path.isfile(args.resume), \
@@ -73,37 +94,38 @@ def main():
 
         start_epoch = checkpoint['epoch'] + 1
         best_result = checkpoint['best_result']
+        optimizer = checkpoint['optimizer']
 
-        model_dict = checkpoint['model'].module.state_dict()  # to load the trained model using multi-GPUs
-        model = DORN_nyu.DORN()
-        model.load_state_dict(model_dict)
+        # solve 'out of memory'
+        model = checkpoint['model']
 
         print("=> loaded checkpoint (epoch {})".format(checkpoint['epoch']))
-        del checkpoint  # clear memory
-        del model_dict
+
+        # clear memory
+        del checkpoint
+        # del model_dict
+        torch.cuda.empty_cache()
     else:
         print("=> creating Model")
-        model = DORN_nyu.DORN()
+        model = FCRN.ResNet(output_size=train_loader.dataset.output_size)
         print("=> model created.")
         start_epoch = 0
 
-    # in paper, aspp module's lr is 20 bigger than the other modules
-    train_params = [{'params': model.feature_extractor.parameters(), 'lr': args.lr},
-                    {'params': model.aspp_module.parameters(), 'lr': args.lr * 20},
-                    {'params': model.orl.parameters(), 'lr': args.lr}]
+        # different modules have different learning rate
+        train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
+                        {'params': model.get_20x_lr_params(), 'lr': args.lr * 20}]
 
-    optimizer = torch.optim.SGD(train_params, lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
+        optimizer = torch.optim.SGD(train_params, lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
 
-    # You can use DataParallel() whether you use Multi-GPUs or not
-    model = nn.DataParallel(model)
-    model = model.cuda()
+        # You can use DataParallel() whether you use Multi-GPUs or not
+        model = nn.DataParallel(model).cuda()
 
     # when training, use reduceLROnPlateau to reduce learning rate
     scheduler = lr_scheduler.ReduceLROnPlateau(
         optimizer, 'min', patience=args.lr_patience)
 
     # loss function
-    criterion = criteria.ordLoss()
+    criterion = criteria.MaskedL1Loss()
 
     # create directory path
     output_directory = utils.get_output_directory(args)
@@ -130,13 +152,14 @@ def main():
     logger = SummaryWriter(log_path)
 
     for epoch in range(start_epoch, args.epochs):
-        train(train_loader, model, criterion, optimizer, epoch, logger)  # train for one epoch
-        result, img_merge = validate(val_loader, model, epoch, logger)   # evaluate on validation set
 
+        # remember change of the learning rate
         for i, param_group in enumerate(optimizer.param_groups):
             old_lr = float(param_group['lr'])
-
             logger.add_scalar('Lr/lr_' + str(i), old_lr, epoch)
+
+        train(train_loader, model, criterion, optimizer, epoch, logger)  # train for one epoch
+        result, img_merge = validate(val_loader, model, epoch, logger)  # evaluate on validation set
 
         # remember best rmse and save checkpoint
         is_best = result.rmse < best_result.rmse
@@ -175,38 +198,34 @@ def train(train_loader, model, criterion, optimizer, epoch, logger):
     end = time.time()
 
     batch_num = len(train_loader)
-    current_step = batch_num * args.batch_size * epoch
 
     for i, (input, target) in enumerate(train_loader):
 
-        if torch.cuda.is_available():
-            input, target = input.cuda(), target.cuda()
-
-        data_time = time.time() - end
-
-        current_step += input.data.shape[0]
-
+        # itr_count += 1
+        input, target = input.cuda(), target.cuda()
+        # print('input size  = ', input.size())
+        # print('target size = ', target.size())
         torch.cuda.synchronize()
+        data_time = time.time() - end
 
         # compute pred
         end = time.time()
-        with torch.autograd.detect_anomaly():
-            pred_d, pred_ord = model(input)  # @wx 注意输出
 
-            loss = criterion(pred_ord, target)
-            optimizer.zero_grad()
-            loss.backward()  # compute gradient and do SGD step
-            optimizer.step()
+        pred = model(input)  # @wx 注意输出
 
+        # print('pred size = ', pred.size())
+        # print('target size = ', target.size())
+
+        loss = criterion(pred, target)
+        optimizer.zero_grad()
+        loss.backward()  # compute gradient and do SGD step
+        optimizer.step()
         torch.cuda.synchronize()
-
         gpu_time = time.time() - end
 
         # measure accuracy and record loss
         result = Result()
-        depth = nyu_dataloader.get_depth_sid(pred_d)
-        target_dp = nyu_dataloader.get_depth_sid(target)
-        result.evaluate(depth.data, target_dp.data)
+        result.evaluate(pred.data, target.data)
         average_meter.update(result, gpu_time, data_time, input.size(0))
         end = time.time()
 
@@ -215,17 +234,16 @@ def train(train_loader, model, criterion, optimizer, epoch, logger):
             print('Train Epoch: {0} [{1}/{2}]\t'
                   't_Data={data_time:.3f}({average.data_time:.3f}) '
                   't_GPU={gpu_time:.3f}({average.gpu_time:.3f})\n\t'
-                  'Loss={loss:.3f} '
-                  'RMSE={result.rmse:.3f}({average.rmse:.3f}) '
-                  'RML={result.absrel:.3f}({average.absrel:.3f}) '
+                  'Loss={Loss:.5f} '
+                  'RMSE={result.rmse:.2f}({average.rmse:.2f}) '
+                  'RML={result.absrel:.2f}({average.absrel:.2f}) '
                   'Log10={result.lg10:.3f}({average.lg10:.3f}) '
                   'Delta1={result.delta1:.3f}({average.delta1:.3f}) '
                   'Delta2={result.delta2:.3f}({average.delta2:.3f}) '
                   'Delta3={result.delta3:.3f}({average.delta3:.3f})'.format(
-                epoch, i + 1, batch_num, data_time=data_time, loss=loss.item(),
-                gpu_time=gpu_time, result=result, average=average_meter.average()))
-
-            logger.add_scalar('Train/Loss', loss.item(), current_step)
+                epoch, i + 1, len(train_loader), data_time=data_time,
+                gpu_time=gpu_time, Loss=loss.item(), result=result, average=average_meter.average()))
+            current_step = epoch * batch_num + i
             logger.add_scalar('Train/RMSE', result.rmse, current_step)
             logger.add_scalar('Train/rml', result.absrel, current_step)
             logger.add_scalar('Train/Log10', result.lg10, current_step)
@@ -233,14 +251,18 @@ def train(train_loader, model, criterion, optimizer, epoch, logger):
             logger.add_scalar('Train/Delta2', result.delta2, current_step)
             logger.add_scalar('Train/Delta3', result.delta3, current_step)
 
+    avg = average_meter.average()
+
 
 # validation
-def validate(val_loader, model, epoch, logger, write_to_file=True):
+def validate(val_loader, model, epoch, logger):
     average_meter = AverageMeter()
 
     model.eval()  # switch to evaluate mode
 
     end = time.time()
+
+    skip = len(val_loader) // 9  # save images every skip iters
 
     for i, (input, target) in enumerate(val_loader):
 
@@ -251,27 +273,30 @@ def validate(val_loader, model, epoch, logger, write_to_file=True):
         # compute output
         end = time.time()
         with torch.no_grad():
-            pred_d, pred_ord = model(input)
+            pred = model(input)
+
         torch.cuda.synchronize()
         gpu_time = time.time() - end
 
         # measure accuracy and record loss
         result = Result()
-        depth = nyu_dataloader.get_depth_sid(pred_d)
-        result.evaluate(depth.data, target.data)
+        result.evaluate(pred.data, target.data)
 
         average_meter.update(result, gpu_time, data_time, input.size(0))
         end = time.time()
 
         # save 8 images for visualization
-        skip = 50
-
-        rgb = input
+        if args.dataset == 'kitti':
+            rgb = input[0]
+            pred = pred[0]
+            target = target[0]
+        else:
+            rgb = input
 
         if i == 0:
-            img_merge = utils.merge_into_row(rgb, target, depth)
+            img_merge = utils.merge_into_row(rgb, target, pred)
         elif (i < 8 * skip) and (i % skip == 0):
-            row = utils.merge_into_row(rgb, target, depth)
+            row = utils.merge_into_row(rgb, target, pred)
             img_merge = utils.add_row(img_merge, row)
         elif i == 8 * skip:
             filename = output_directory + '/comparison_' + str(epoch) + '.png'
@@ -293,7 +318,7 @@ def validate(val_loader, model, epoch, logger, write_to_file=True):
     print('\n*\n'
           'RMSE={average.rmse:.3f}\n'
           'Rel={average.absrel:.3f}\n'
-          'Log10={average.lg10:.3f}'
+          'Log10={average.lg10:.3f}\n'
           'Delta1={average.delta1:.3f}\n'
           'Delta2={average.delta2:.3f}\n'
           'Delta3={average.delta3:.3f}\n'
