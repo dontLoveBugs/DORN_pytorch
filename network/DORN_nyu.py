@@ -11,21 +11,80 @@ import collections
 import math
 
 
-def weights_init(m):
-    # Initialize filters with Gaussian random weights
+def weights_init(modules, type='xavier'):
+    m = modules
     if isinstance(m, nn.Conv2d):
-        n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-        m.weight.data.normal_(0, math.sqrt(2. / n))
+        if type == 'xavier':
+            torch.nn.init.xavier_normal_(m.weight)
+        elif type == 'kaiming':  # msra
+            torch.nn.init.kaiming_normal_(m.weight)
+        else:
+            n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+            m.weight.data.normal_(0, math.sqrt(2. / n))
+
         if m.bias is not None:
             m.bias.data.zero_()
     elif isinstance(m, nn.ConvTranspose2d):
-        n = m.kernel_size[0] * m.kernel_size[1] * m.in_channels
-        m.weight.data.normal_(0, math.sqrt(2. / n))
+        if type == 'xavier':
+            torch.nn.init.xavier_normal_(m.weight)
+        elif type == 'kaiming':  # msra
+            torch.nn.init.kaiming_normal_(m.weight)
+        else:
+            n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+            m.weight.data.normal_(0, math.sqrt(2. / n))
+
         if m.bias is not None:
             m.bias.data.zero_()
     elif isinstance(m, nn.BatchNorm2d):
-        m.weight.data.fill_(1)
+        m.weight.data.fill_(1.0)
         m.bias.data.zero_()
+    elif isinstance(m, nn.Linear):
+        if type == 'xavier':
+            torch.nn.init.xavier_normal_(m.weight)
+        elif type == 'kaiming':  # msra
+            torch.nn.init.kaiming_normal_(m.weight)
+        else:
+            m.weight.data.fill_(1.0)
+
+        if m.bias is not None:
+            m.bias.data.zero_()
+    elif isinstance(m, nn.Module):
+        for m in modules:
+            if isinstance(m, nn.Conv2d):
+                if type == 'xavier':
+                    torch.nn.init.xavier_normal_(m.weight)
+                elif type == 'kaiming':  # msra
+                    torch.nn.init.kaiming_normal_(m.weight)
+                else:
+                    n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                    m.weight.data.normal_(0, math.sqrt(2. / n))
+
+                if m.bias is not None:
+                    m.bias.data.zero_()
+            elif isinstance(m, nn.ConvTranspose2d):
+                if type == 'xavier':
+                    torch.nn.init.xavier_normal_(m.weight)
+                elif type == 'kaiming':  # msra
+                    torch.nn.init.kaiming_normal_(m.weight)
+                else:
+                    n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                    m.weight.data.normal_(0, math.sqrt(2. / n))
+
+                if m.bias is not None:
+                    m.bias.data.zero_()
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1.0)
+                m.bias.data.zero_()
+            elif isinstance(m, nn.Linear):
+                if type == 'xavier':
+                    torch.nn.init.xavier_normal_(m.weight)
+                elif type == 'kaiming':  # msra
+                    torch.nn.init.kaiming_normal_(m.weight)
+                else:
+                    m.weight.data.fill_(1.0)
+
+                if m.bias is not None:
+                    m.bias.data.zero_()
 
 
 class FullImageEncoder(nn.Module):
@@ -37,6 +96,8 @@ class FullImageEncoder(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.conv1 = nn.Conv2d(512, 512, 1)  # 1x1 卷积
         self.upsample = nn.UpsamplingBilinear2d(size=(33, 45))  # KITTI 49X65 NYU 33X45
+
+        weights_init(self.modules(), 'xavier')
 
     def forward(self, x):
         x1 = self.global_pooling(x)
@@ -89,6 +150,8 @@ class SceneUnderstandingModule(nn.Module):
             # nn.UpsamplingBilinear2d(scale_factor=8)
             nn.UpsamplingBilinear2d(size=(257, 353))
         )
+
+        weights_init(self.modules(), type='xavier')
 
     def forward(self, x):
         x1 = self.encoder(x)
@@ -196,14 +259,16 @@ class ResNet(nn.Module):
         # clear memory
         del pretrained_model
 
-        weights_init(self.conv1)
-        weights_init(self.bn1)
-        weights_init(self.layer1[0].conv1)
-        weights_init(self.layer1[0].downsample[0])
-        weights_init(self.layer3[0].conv2)
-        weights_init(self.layer3[0].downsample[0])
-        weights_init(self.layer4[0].conv2)
-        weights_init(self.layer4[0].downsample[0])
+        if pretrained:
+            weights_init(self.conv1, type='kaiming')
+            weights_init(self.layer1[0].conv1, type='kaiming')
+            weights_init(self.layer1[0].downsample[0], type='kaiming')
+            weights_init(self.layer3[0].conv2, type='kaiming')
+            weights_init(self.layer3[0].downsample[0], type='kaiming')
+            weights_init(self.layer4[0].conv2, 'kaiming')
+            weights_init(self.layer4[0].downsample[0], 'kaiming')
+        else:
+            weights_init(self.modules(), type='kaiming')
 
     def forward(self, x):
         # print(pretrained_model._modules)
@@ -247,6 +312,20 @@ class DORN(nn.Module):
         depth_labels, ord_labels = self.orl(x2)
         return depth_labels, ord_labels
 
+    def get_1x_lr_params(self):
+        b = [self.feature_extractor]
+        for i in range(len(b)):
+            for k in b[i].parameters():
+                if k.requires_grad:
+                    yield k
+
+    def get_10x_lr_params(self):
+        b = [self.aspp_module, self.orl]
+        for j in range(len(b)):
+            for k in b[j].parameters():
+                if k.requires_grad:
+                    yield k
+
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"  # 默认使用GPU 0
 
@@ -260,3 +339,5 @@ if __name__ == "__main__":
         out0, out1 = model(image)
     print('out0 size:', out0.size())
     print('out1 size:', out1.size())
+
+    print(out0)

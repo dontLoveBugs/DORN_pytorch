@@ -23,20 +23,18 @@ def parse_command():
                         help='number of total epochs to run (default: 15)')
     parser.add_argument('--lr', '--learning-rate', default=0.0001, type=float,
                         metavar='LR', help='initial learning rate (default 0.0001)')
-    parser.add_argument(
-        '--lr_patience',
-        default=2,
-        type=int,
-        help='Patience of LR scheduler. See documentation of ReduceLROnPlateau.'
-    )
+    parser.add_argument('--lr_patience', default=2, type=int,
+                        help='Patience of LR scheduler. See documentation of ReduceLROnPlateau.')
     parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                         help='momentum')
     parser.add_argument('--weight_decay', '--wd', default=0.0005, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
     parser.add_argument('-j', '--workers', default=10, type=int, metavar='N',
                         help='number of data loading workers (default: 10)')
-    parser.add_argument("--data_path", type=str, default="/home/data/model/wangxin/nyudepthv2",
-                        help="the root folder of dataset")
+    parser.add_argument('--dataset', default='kitti-raw', type=str,
+                        help='dataset used for training, kitti and nyu is available')
+    parser.add_argument('--manual_seed', default=1, type=int, help='Manually set random seed')
+    parser.add_argument('--gpu', default=None, type=str, help='if not none, use Single GPU')
     parser.add_argument('--print-freq', '-p', default=10, type=int,
                         metavar='N', help='print frequency (default: 10)')
     args = parser.parse_args()
@@ -62,34 +60,10 @@ def save_checkpoint(state, is_best, epoch, output_directory):
     if is_best:
         best_filename = os.path.join(output_directory, 'model_best.pth.tar')
         shutil.copyfile(checkpoint_filename, best_filename)
-    if epoch > 0:
-        prev_checkpoint_filename = os.path.join(output_directory, 'checkpoint-' + str(epoch - 1) + '.pth.tar')
-        if os.path.exists(prev_checkpoint_filename):
-            os.remove(prev_checkpoint_filename)
-
-
-def adjust_learning_rate(optimizer, lr_init, epoch):
-    """Sets the learning rate to the initial LR decayed by 10 every 5 epochs"""
-    lr = lr_init * (0.1 ** (epoch // 5))
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
-    print('*********************************************')
-    print('  epoch[%d], learning rate = %f' % (epoch, lr))
-    print('*********************************************')
-
-
-# ploy策略的学习率更新
-def update_ploy_lr(optimizer, initialized_lr, current_step, max_step, power=0.9):
-    lr = initialized_lr * ((1 - float(current_step) / max_step) ** (power))
-    idx = 0
-    for param_group in optimizer.param_groups:
-        if idx == 0: # base params
-            param_group['lr'] = lr
-        else:
-            param_group['lr'] = lr * 20
-        # print(idx, lr, torch.cuda.current_device())
-        idx += 1
-    return lr
+    # if epoch > 0:
+    #     prev_checkpoint_filename = os.path.join(output_directory, 'checkpoint-' + str(epoch - 1) + '.pth.tar')
+    #     if os.path.exists(prev_checkpoint_filename):
+    #         os.remove(prev_checkpoint_filename)
 
 
 def colored_depthmap(depth, d_min=None, d_max=None):

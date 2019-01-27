@@ -13,8 +13,8 @@ import torch
 from tensorboardX import SummaryWriter
 from torch.optim import lr_scheduler
 
-from dataloaders import kitti_dataloader, nyu_dataloader
-from dataloaders.kitti_raw_dataloader import KittiFolder
+from dataloaders import nyu_dataloader
+from dataloaders.kitti_dataloader import KittiFolder
 from dataloaders.path import Path
 from metrics import AverageMeter, Result
 import utils
@@ -24,7 +24,7 @@ import torch.nn as nn
 
 import numpy as np
 
-from network import
+from network import get_models
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"  # use single GPU
 
@@ -77,6 +77,9 @@ def main():
 
     # set random seed
     torch.manual_seed(args.manual_seed)
+    torch.cuda.manual_seed(args.manual_seed)
+    np.random.seed(args.manual_seed)
+    torch.random.seed(args.manual_seed)
 
     if torch.cuda.device_count() > 1:
         print("Let's use", torch.cuda.device_count(), "GPUs!")
@@ -107,13 +110,13 @@ def main():
         torch.cuda.empty_cache()
     else:
         print("=> creating Model")
-        model = FCRN.ResNet(output_size=train_loader.dataset.output_size)
+        model = get_models(args.dataset)
         print("=> model created.")
         start_epoch = 0
 
         # different modules have different learning rate
         train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
-                        {'params': model.get_20x_lr_params(), 'lr': args.lr * 20}]
+                        {'params': model.get_10x_lr_params(), 'lr': args.lr * 10}]
 
         optimizer = torch.optim.SGD(train_params, lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
 

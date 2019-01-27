@@ -66,13 +66,13 @@ class KittiFolder(Dataset):
         self.size = size
 
         if self.mode == 'train':
-            self.im_gt_paths = readPathFiles('./tool/filenames/eigen_train_pairs.txt', root_dir)
+            self.im_gt_paths = readPathFiles('../tool/filenames/eigen_train_pairs.txt', root_dir)
 
         elif self.mode == 'test':
-            self.im_gt_paths = readPathFiles('./tool/filenames/eigen_test_pairs.txt', root_dir)
+            self.im_gt_paths = readPathFiles('../tool/filenames/eigen_test_pairs.txt', root_dir)
 
         elif self.mode == 'val':
-            self.im_gt_paths = readPathFiles('./tool/filenames/eigen_val_pairs.txt', root_dir)
+            self.im_gt_paths = readPathFiles('../tool/filenames/eigen_val_pairs.txt', root_dir)
 
         else:
             print('no mode named as ', mode)
