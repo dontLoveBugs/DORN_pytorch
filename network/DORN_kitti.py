@@ -219,7 +219,7 @@ class OrdinalRegressionLayer(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, in_channels=3, pretrained=True):
+    def __init__(self, in_channels=3, pretrained=True, freeze=True):
         super(ResNet, self).__init__()
         pretrained_model = torchvision.models.__dict__['resnet{}'.format(101)](pretrained=pretrained)
 
@@ -268,6 +268,9 @@ class ResNet(nn.Module):
         else:
             weights_init(self.modules(), type='kaiming')
 
+        if freeze:
+            self.freeze()
+
     def forward(self, x):
         # print(pretrained_model._modules)
 
@@ -289,14 +292,19 @@ class ResNet(nn.Module):
         # print('layer4 size:', x4.size())
         return x4
 
+    def freeze(self):
+        for m in self.modules():
+            if isinstance(m, nn.BatchNorm2d):
+                m.eval()
+
 
 class DORN(nn.Module):
-    def __init__(self, output_size=(257, 353), channel=3):
+    def __init__(self, output_size=(257, 353), channel=3, freeze=True):
         super(DORN, self).__init__()
 
         self.output_size = output_size
         self.channel = channel
-        self.feature_extractor = ResNet(in_channels=channel, pretrained=True)
+        self.feature_extractor = ResNet(in_channels=channel, pretrained=True, freeze=freeze)
         self.aspp_module = SceneUnderstandingModule()
         self.orl = OrdinalRegressionLayer()
 

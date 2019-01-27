@@ -23,13 +23,19 @@ import os
 import torch.nn as nn
 
 import numpy as np
+import random
 
-from network import get_models
+from network.get_models import get_models
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"  # use single GPU
 
 args = utils.parse_command()
 print(args)
+
+# if setting gpu id, the using single GPU
+if args.gpu:
+    print('Single GPU Mode.')
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 
 best_result = Result()
 best_result.set_to_worst()
@@ -79,7 +85,7 @@ def main():
     torch.manual_seed(args.manual_seed)
     torch.cuda.manual_seed(args.manual_seed)
     np.random.seed(args.manual_seed)
-    torch.random.seed(args.manual_seed)
+    random.seed(args.manual_seed)
 
     if torch.cuda.device_count() > 1:
         print("Let's use", torch.cuda.device_count(), "GPUs!")
@@ -128,7 +134,7 @@ def main():
         optimizer, 'min', patience=args.lr_patience)
 
     # loss function
-    criterion = criteria.MaskedL1Loss()
+    criterion = criteria.ordLoss()
 
     # create directory path
     output_directory = utils.get_output_directory(args)
@@ -214,21 +220,22 @@ def train(train_loader, model, criterion, optimizer, epoch, logger):
         # compute pred
         end = time.time()
 
-        pred = model(input)  # @wx 注意输出
+        with torch.autograd.detect_anomaly():
+            pred_d, pred_ord = model(input)  # @wx 注意输出
 
-        # print('pred size = ', pred.size())
-        # print('target size = ', target.size())
+            loss = criterion(pred_ord, target)
+            optimizer.zero_grad()
+            loss.backward()  # compute gradient and do SGD step
+            optimizer.step()
 
-        loss = criterion(pred, target)
-        optimizer.zero_grad()
-        loss.backward()  # compute gradient and do SGD step
-        optimizer.step()
         torch.cuda.synchronize()
         gpu_time = time.time() - end
 
         # measure accuracy and record loss
         result = Result()
-        result.evaluate(pred.data, target.data)
+        depth = nyu_dataloader.get_depth_sid(pred_d)
+        target_dp = nyu_dataloader.get_depth_sid(target)
+        result.evaluate(depth.data, target_dp.data)
         average_meter.update(result, gpu_time, data_time, input.size(0))
         end = time.time()
 
@@ -276,14 +283,15 @@ def validate(val_loader, model, epoch, logger):
         # compute output
         end = time.time()
         with torch.no_grad():
-            pred = model(input)
+            pred_d, pred_ord = model(input)
 
         torch.cuda.synchronize()
         gpu_time = time.time() - end
 
         # measure accuracy and record loss
         result = Result()
-        result.evaluate(pred.data, target.data)
+        depth = nyu_dataloader.get_depth_sid(pred_d)
+        result.evaluate(depth.data, target.data)
 
         average_meter.update(result, gpu_time, data_time, input.size(0))
         end = time.time()

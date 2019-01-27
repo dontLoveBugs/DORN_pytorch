@@ -15,10 +15,10 @@ cmap = plt.cm.jet
 
 def parse_command():
     import argparse
-    parser = argparse.ArgumentParser(description='NYUDepth')
-    parser.add_argument('--resume', default='', type=str, metavar='PATH',
+    parser = argparse.ArgumentParser(description='DORN')
+    parser.add_argument('--resume', default=None, type=str, metavar='PATH',
                         help='path to latest checkpoint (default: ./run/run_1/checkpoint-5.pth.tar)')
-    parser.add_argument('-b', '--batch-size', default=4, type=int, help='mini-batch size (default: 4)')
+    parser.add_argument('-b', '--batch-size', default=3, type=int, help='mini-batch size (default: 4)')
     parser.add_argument('--epochs', default=200, type=int, metavar='N',
                         help='number of total epochs to run (default: 15)')
     parser.add_argument('--lr', '--learning-rate', default=0.0001, type=float,
@@ -31,7 +31,7 @@ def parse_command():
                         metavar='W', help='weight decay (default: 1e-4)')
     parser.add_argument('-j', '--workers', default=10, type=int, metavar='N',
                         help='number of data loading workers (default: 10)')
-    parser.add_argument('--dataset', default='kitti-raw', type=str,
+    parser.add_argument('--dataset', default='nyu', type=str,
                         help='dataset used for training, kitti and nyu is available')
     parser.add_argument('--manual_seed', default=1, type=int, help='Manually set random seed')
     parser.add_argument('--gpu', default=None, type=str, help='if not none, use Single GPU')
@@ -43,13 +43,14 @@ def parse_command():
 
 def get_output_directory(args):
     save_dir_root = os.path.join(os.path.dirname(os.path.abspath(__file__)))
+    save_dir_root = os.path.join(save_dir_root, 'result' + '-' + args.dataset)
     if args.resume:
-        runs = sorted(glob.glob(os.path.join(save_dir_root, 'run', 'run_*')))
+        runs = sorted(glob.glob(os.path.join(save_dir_root, 'run_*')))
         run_id = int(runs[-1].split('_')[-1]) if runs else 0
     else:
-        runs = sorted(glob.glob(os.path.join(save_dir_root, 'run', 'run_*')))
+        runs = sorted(glob.glob(os.path.join(save_dir_root, 'run_*')))
         run_id = int(runs[-1].split('_')[-1]) + 1 if runs else 0
-    save_dir = os.path.join(save_dir_root, 'run', 'run_' + str(run_id))
+    save_dir = os.path.join(save_dir_root, 'run_' + str(run_id))
     return save_dir
 
 
