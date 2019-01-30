@@ -66,13 +66,13 @@ class KittiFolder(Dataset):
         self.size = size
 
         if self.mode == 'train':
-            self.im_gt_paths = readPathFiles('../tool/filenames/eigen_train_pairs.txt', root_dir)
+            self.im_gt_paths = readPathFiles('./tool/filenames/eigen_train_pairs.txt', root_dir)
 
         elif self.mode == 'test':
-            self.im_gt_paths = readPathFiles('../tool/filenames/eigen_test_pairs.txt', root_dir)
+            self.im_gt_paths = readPathFiles('./tool/filenames/eigen_test_pairs.txt', root_dir)
 
         elif self.mode == 'val':
-            self.im_gt_paths = readPathFiles('../tool/filenames/eigen_val_pairs.txt', root_dir)
+            self.im_gt_paths = readPathFiles('./tool/filenames/eigen_val_pairs.txt', root_dir)
 
         else:
             print('no mode named as ', mode)
@@ -92,6 +92,7 @@ class KittiFolder(Dataset):
 
         transform = my_transforms.Compose([
             my_transforms.Crop(130, 10, 240, 1200),
+            my_transforms.Resize(460 / 240, interpolation='bilinear'),
             my_transforms.Rotate(angle),
             my_transforms.Resize(s),
             my_transforms.CenterCrop(self.size),
@@ -121,6 +122,7 @@ class KittiFolder(Dataset):
 
         transform = my_transforms.Compose([
             my_transforms.Crop(130, 10, 240, 1200),
+            my_transforms.Resize(460 / 240, interpolation='bilinear'),
             my_transforms.CenterCrop(self.size)
         ])
 
@@ -157,18 +159,19 @@ class KittiFolder(Dataset):
 
 
 import torch
+from tqdm import tqdm
 
 if __name__ == '__main__':
-    root_dir = '/home/data/UnsupervisedDepth/wangixn/KITTI'
+    root_dir = '/home/data/UnsupervisedDepth/KITTI'
 
     # im_gt_paths = readPathFiles('./eigen_val_pairs.txt', root_dir)
 
-    data_set = KittiFolder(root_dir, mode='train', size=(228, 912))
+    data_set = KittiFolder(root_dir, mode='train', size=(385, 513))
     data_loader = torch.utils.data.DataLoader(data_set, batch_size=1, shuffle=False, num_workers=0)
 
     print('dataset num is ', len(data_loader))
 
-    for i, (im, gt) in enumerate(data_loader):
+    for im, gt in tqdm(data_loader):
 
         # print(im)
 

@@ -100,9 +100,9 @@ class FullImageEncoder(nn.Module):
         weights_init(self.modules(), 'xavier')
 
     def forward(self, x):
-        print('x size:', x.size())
+        # print('x size:', x.size())
         x1 = self.global_pooling(x)
-        print('# x1 size:', x1.size())
+        # print('# x1 size:', x1.size())
         x2 = self.dropout(x1)
         x3 = x2.view(-1, 2048 * 4 * 5)  # kitti 4x5
         x4 = self.relu(self.global_fc(x3))
@@ -299,12 +299,12 @@ class ResNet(nn.Module):
 
 
 class DORN(nn.Module):
-    def __init__(self, output_size=(257, 353), channel=3, freeze=True):
+    def __init__(self, output_size=(257, 353), channel=3, pretrained=True, freeze=True):
         super(DORN, self).__init__()
 
         self.output_size = output_size
         self.channel = channel
-        self.feature_extractor = ResNet(in_channels=channel, pretrained=True, freeze=freeze)
+        self.feature_extractor = ResNet(in_channels=channel, pretrained=pretrained, freeze=freeze)
         self.aspp_module = SceneUnderstandingModule()
         self.orl = OrdinalRegressionLayer()
 

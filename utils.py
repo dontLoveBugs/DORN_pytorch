@@ -21,7 +21,7 @@ def parse_command():
     parser.add_argument('-b', '--batch-size', default=3, type=int, help='mini-batch size (default: 4)')
     parser.add_argument('--epochs', default=200, type=int, metavar='N',
                         help='number of total epochs to run (default: 15)')
-    parser.add_argument('--lr', '--learning-rate', default=0.0001, type=float,
+    parser.add_argument('--lr', '--learning-rate', default=0.001, type=float,
                         metavar='LR', help='initial learning rate (default 0.0001)')
     parser.add_argument('--lr_patience', default=2, type=int,
                         help='Patience of LR scheduler. See documentation of ReduceLROnPlateau.')
@@ -31,10 +31,10 @@ def parse_command():
                         metavar='W', help='weight decay (default: 1e-4)')
     parser.add_argument('-j', '--workers', default=10, type=int, metavar='N',
                         help='number of data loading workers (default: 10)')
-    parser.add_argument('--dataset', default='nyu', type=str,
+    parser.add_argument('--dataset', default='kitti', type=str,
                         help='dataset used for training, kitti and nyu is available')
     parser.add_argument('--manual_seed', default=1, type=int, help='Manually set random seed')
-    parser.add_argument('--gpu', default=None, type=str, help='if not none, use Single GPU')
+    parser.add_argument('--gpu', default='0', type=str, help='if not none, use Single GPU')
     parser.add_argument('--print-freq', '-p', default=10, type=int,
                         metavar='N', help='print frequency (default: 10)')
     args = parser.parse_args()
@@ -43,7 +43,7 @@ def parse_command():
 
 def get_output_directory(args):
     save_dir_root = os.path.join(os.path.dirname(os.path.abspath(__file__)))
-    save_dir_root = os.path.join(save_dir_root, 'result' + '-' + args.dataset)
+    save_dir_root = os.path.join(save_dir_root, 'result', args.dataset)
     if args.resume:
         runs = sorted(glob.glob(os.path.join(save_dir_root, 'run_*')))
         run_id = int(runs[-1].split('_')[-1]) if runs else 0
@@ -52,6 +52,66 @@ def get_output_directory(args):
         run_id = int(runs[-1].split('_')[-1]) + 1 if runs else 0
     save_dir = os.path.join(save_dir_root, 'run_' + str(run_id))
     return save_dir
+
+
+"""
+After obtaining ordinal labels for each position od Image,
+the predicted depth value d(w, h) can be decoded as below.
+"""
+
+
+def get_depth_sid(args, labels):
+    if args.dataset == 'kitti':
+        min = 0.001
+        max = 80.0
+        K = 71.0
+    elif args.dataset == 'nyu':
+        min = 0.02
+        max = 80.0
+        K = 68.0
+    else:
+        print('No Dataset named as ', args.dataset)
+
+    if torch.cuda.is_available():
+        alpha_ = torch.tensor(min).cuda()
+        beta_ = torch.tensor(max).cuda()
+        K_ = torch.tensor(K).cuda()
+    else:
+        alpha_ = torch.tensor(min)
+        beta_ = torch.tensor(max)
+        K_ = torch.tensor(K)
+
+    # print('label size:', labels.size())
+    depth = torch.exp(torch.log(alpha_) + torch.log(beta_ / alpha_) * labels / K_)
+    # print(depth.size())
+    return depth.float()
+
+
+def get_labels_sid(args, depth):
+    if args.dataset == 'kitti':
+        alpha = 0.001
+        beta = 80.0
+        K = 71.0
+    elif args.dataset == 'nyu':
+        alpha = 0.02
+        beta = 10.0
+        K = 68.0
+    else:
+        print('No Dataset named as ', args.dataset)
+
+    alpha = torch.tensor(alpha)
+    beta = torch.tensor(beta)
+    K = torch.tensor(K)
+
+    if torch.cuda.is_available():
+        alpha = alpha.cuda()
+        beta = beta.cuda()
+        K = K.cuda()
+
+    labels = K * torch.log(depth / alpha) / torch.log(beta / alpha)
+    if torch.cuda.is_available():
+        labels = labels.cuda()
+    return labels.int()
 
 
 # save checkpoint

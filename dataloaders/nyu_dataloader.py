@@ -38,7 +38,7 @@ class NYUDataset(MyDataloader):
         rgb_np = np.asfarray(rgb_np, dtype='float') / 255
         depth_np = transform(depth_np)
 
-        return rgb_np, self.get_depth_sid(depth_np)
+        return rgb_np, depth_np
 
     def val_transform(self, rgb, depth):
         depth_np = depth
@@ -51,29 +51,3 @@ class NYUDataset(MyDataloader):
         depth_np = transform(depth_np)
 
         return rgb_np, depth_np
-
-    def get_depth_sid(self, depth):
-        k = K * np.log(depth / alpha) / np.log(beta / alpha)
-        k = k.astype(np.int32)
-        return k
-
-
-"""
-After obtaining ordinal labels for each position od Image, 
-the predicted depth value d(w, h) can be decoded as below.
-"""
-
-
-def get_depth_sid(depth_labels):
-    if torch.cuda.is_available():
-        alpha_ = torch.tensor(0.02).cuda()
-        beta_ = torch.tensor(10.0).cuda()
-        K_ = torch.tensor(68.0).cuda()
-    else:
-        alpha_ = torch.tensor(0.02)
-        beta_ = torch.tensor(10.0)
-        K_ = torch.tensor(68.0)
-
-    t = torch.exp(torch.log(alpha_) + torch.log(beta_ / alpha_) * depth_labels / K_)
-    depth = t
-    return depth

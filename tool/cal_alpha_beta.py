@@ -5,7 +5,7 @@
  @Email   : wangxin_buaa@163.com
 """
 import os
-
+from tqdm import tqdm
 import torch
 
 import numpy as np
@@ -18,11 +18,11 @@ from dataloaders.path import Path
 def create_loader(dataset='kitti'):
     root_dir = Path.db_root_dir(dataset)
     if dataset == 'kitti':
-        train_set = KittiFolder(root_dir, mode='train', size=(228, 912))
-        test_set = KittiFolder(root_dir, mode='test', size=(228, 912))
-        train_loader = torch.utils.data.DataLoader(train_set, batch_size=4, shuffle=False,
+        train_set = KittiFolder(root_dir, mode='train', size=(385, 513))
+        test_set = KittiFolder(root_dir, mode='test', size=(385, 513))
+        train_loader = torch.utils.data.DataLoader(train_set, batch_size=32, shuffle=False,
                                                    num_workers=0, pin_memory=True)
-        test_loader = torch.utils.data.DataLoader(test_set, batch_size=4, shuffle=False,
+        test_loader = torch.utils.data.DataLoader(test_set, batch_size=32, shuffle=False,
                                                   num_workers=0, pin_memory=True)
         return train_loader, test_loader
     else:
@@ -58,9 +58,10 @@ def cal_alpga_beta(args):
     alpha = np.inf
     beta = 0
 
-    for i, (input, target) in enumerate(train_loader):
+    print('Calculating Training Set.')
+    for input, target in tqdm(train_loader):
         input, target = input.cuda(), target.cuda()
-        print('train ', i)
+        # print('train ', i)
         valid_mask = (target > 0).detach()
         max = torch.max(target[valid_mask])
         min = torch.min(target[valid_mask])
@@ -71,9 +72,10 @@ def cal_alpga_beta(args):
         if beta < max:
             beta = max
 
-    for i, (input, target) in enumerate(val_loader):
+    print('Calculating Testing Set.')
+    for input, target in tqdm(val_loader):
         input, target = input.cuda(), target.cuda()
-        print('val ', i)
+        # print('val ', i)
         valid_mask = (target > 0).detach()
         max = torch.max(target[valid_mask])
         min = torch.min(target[valid_mask])
@@ -94,4 +96,4 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', default='kitti', type=str)
 
     args = parser.parse_args()
-    cal_alpga_beta(args)
+    print(cal_alpga_beta(args))

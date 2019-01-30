@@ -44,8 +44,8 @@ best_result.set_to_worst()
 def create_loader(args):
     root_dir = Path.db_root_dir(args.dataset)
     if args.dataset == 'kitti':
-        train_set = KittiFolder(root_dir, mode='train', size=(228, 912))
-        test_set = KittiFolder(root_dir, mode='test', size=(228, 912))
+        train_set = KittiFolder(root_dir, mode='train', size=(385, 513))
+        test_set = KittiFolder(root_dir, mode='test', size=(385, 513))
         train_loader = torch.utils.data.DataLoader(train_set, batch_size=args.batch_size, shuffle=True,
                                                    num_workers=args.workers, pin_memory=True)
         test_loader = torch.utils.data.DataLoader(test_set, batch_size=1, shuffle=False,
@@ -222,8 +222,8 @@ def train(train_loader, model, criterion, optimizer, epoch, logger):
 
         with torch.autograd.detect_anomaly():
             pred_d, pred_ord = model(input)  # @wx 注意输出
-
-            loss = criterion(pred_ord, target)
+            target_c = utils.get_labels_sid(args, target)  # using sid, discretize the groundtruth
+            loss = criterion(pred_ord, target_c)
             optimizer.zero_grad()
             loss.backward()  # compute gradient and do SGD step
             optimizer.step()
@@ -233,9 +233,8 @@ def train(train_loader, model, criterion, optimizer, epoch, logger):
 
         # measure accuracy and record loss
         result = Result()
-        depth = nyu_dataloader.get_depth_sid(pred_d)
-        target_dp = nyu_dataloader.get_depth_sid(target)
-        result.evaluate(depth.data, target_dp.data)
+        depth = utils.get_depth_sid(args, pred_d)
+        result.evaluate(depth.data, target.data)
         average_meter.update(result, gpu_time, data_time, input.size(0))
         end = time.time()
 
@@ -283,26 +282,21 @@ def validate(val_loader, model, epoch, logger):
         # compute output
         end = time.time()
         with torch.no_grad():
-            pred_d, pred_ord = model(input)
+            pred, _ = model(input)
 
         torch.cuda.synchronize()
         gpu_time = time.time() - end
 
         # measure accuracy and record loss
         result = Result()
-        depth = nyu_dataloader.get_depth_sid(pred_d)
-        result.evaluate(depth.data, target.data)
+        pred = utils.get_depth_sid(args, pred)
+        result.evaluate(pred.data, target.data)
 
         average_meter.update(result, gpu_time, data_time, input.size(0))
         end = time.time()
 
         # save 8 images for visualization
-        if args.dataset == 'kitti':
-            rgb = input[0]
-            pred = pred[0]
-            target = target[0]
-        else:
-            rgb = input
+        rgb = input
 
         if i == 0:
             img_merge = utils.merge_into_row(rgb, target, pred)
