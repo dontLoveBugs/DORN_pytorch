@@ -10,7 +10,8 @@ Note: we modify the ordinal layer using matrix operation, making trianing faster
 - [x] DORN model in nyu and kitti
 - [x] Training DORN on nyu and kitti datasets
 - [ ] Results evaluation on nyu test set
-- [x] Calculate alpha and beta in nyu dataset
+- [x] the script to generate nyu and kitti dataset.
+- [x] Calculate alpha and beta in nyu dataset and kitti dataset
 - [x] Realize the ordinal loss in paper 
 
 ### Datasets
