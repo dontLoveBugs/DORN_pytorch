@@ -38,6 +38,6 @@ The kitti dataset contains 23488 images from 32 scenes for training and 697 imag
   ```
  - Run the script to generate the kitti_ground_truth
   ```
-  python gen_kitti_dataset
+  python gen_kitti_dataset.py
   ```
 
