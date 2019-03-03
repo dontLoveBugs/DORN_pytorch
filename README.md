@@ -34,7 +34,7 @@ The kitti dataset contains 23488 images from 32 scenes for training and 697 imag
  - Unzip the compressed files:
   ```bash
   cd ~/kitti-raw-data
-  #find . -name '*.zip' -exec unzip {} \;
+  find . -name '*.zip' -exec unzip {} \;
   ```
  - Run the script to generate the kitti_ground_truth
   ```
