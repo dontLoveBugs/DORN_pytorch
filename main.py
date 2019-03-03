@@ -272,6 +272,7 @@ def validate(val_loader, model, epoch, logger):
     end = time.time()
 
     skip = len(val_loader) // 9  # save images every skip iters
+    img_list = []
 
     for i, (input, target) in enumerate(val_loader):
 

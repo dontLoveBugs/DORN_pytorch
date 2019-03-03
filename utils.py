@@ -18,7 +18,7 @@ def parse_command():
     parser = argparse.ArgumentParser(description='DORN')
     parser.add_argument('--resume', default=None, type=str, metavar='PATH',
                         help='path to latest checkpoint (default: ./run/run_1/checkpoint-5.pth.tar)')
-    parser.add_argument('-b', '--batch-size', default=3, type=int, help='mini-batch size (default: 4)')
+    parser.add_argument('-b', '--batch-size', default=6, type=int, help='mini-batch size (default: 4)')
     parser.add_argument('--epochs', default=200, type=int, metavar='N',
                         help='number of total epochs to run (default: 15)')
     parser.add_argument('--lr', '--learning-rate', default=0.001, type=float,
@@ -31,10 +31,10 @@ def parse_command():
                         metavar='W', help='weight decay (default: 1e-4)')
     parser.add_argument('-j', '--workers', default=10, type=int, metavar='N',
                         help='number of data loading workers (default: 10)')
-    parser.add_argument('--dataset', default='kitti', type=str,
+    parser.add_argument('--dataset', default='nyu', type=str,
                         help='dataset used for training, kitti and nyu is available')
     parser.add_argument('--manual_seed', default=1, type=int, help='Manually set random seed')
-    parser.add_argument('--gpu', default='0', type=str, help='if not none, use Single GPU')
+    parser.add_argument('--gpu', default='1', type=str, help='if not none, use Single GPU')
     parser.add_argument('--print-freq', '-p', default=10, type=int,
                         metavar='N', help='print frequency (default: 10)')
     args = parser.parse_args()
@@ -82,7 +82,8 @@ def get_depth_sid(args, labels):
         K_ = torch.tensor(K)
 
     # print('label size:', labels.size())
-    depth = torch.exp(torch.log(alpha_) + torch.log(beta_ / alpha_) * labels / K_)
+    # depth = torch.exp(torch.log(alpha_) + torch.log(beta_ / alpha_) * labels / K_)
+    depth = alpha_ * (beta_ / alpha_) ** (labels / K_)
     # print(depth.size())
     return depth.float()
 

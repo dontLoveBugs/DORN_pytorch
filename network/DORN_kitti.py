@@ -10,6 +10,8 @@ import torchvision.models
 import collections
 import math
 
+from network.backbone import resnet101
+
 
 def weights_init(modules, type='xavier'):
     m = modules
@@ -181,22 +183,6 @@ class OrdinalRegressionLayer(nn.Module):
         N, C, H, W = x.size()
         ord_num = C // 2
 
-        # if torch.cuda.is_available():
-        #     decode_label = torch.zeros((N, 1, H, W), dtype=torch.float32).cuda()
-        #     ord_labels = torch.zeros((N, C // 2, H, W), dtype=torch.float32).cuda()
-        # else:
-        #     decode_label = torch.zeros((N, 1, H, W), dtype=torch.float32)
-        #     ord_labels = torch.zeros((N, C // 2, H, W), dtype=torch.float32)
-        # print('#1 decode size:', decode_label.size())
-        # ord_num = C // 2
-        # for i in range(ord_num):
-        #     ord_i = x[:, 2 * i:2 * i + 2, :, :]
-        #     ord_i = nn.functional.softmax(ord_i, dim=1)  # compute P(w, h) in paper
-        #     ord_i = ord_i[:, 1, :, :]
-        #     ord_labels[:, i, :, :] = ord_i
-        #     # print('ord_i >= 0.5 size:', (ord_i >= 0.5).size())
-        #     decode_label += (ord_i >= 0.5).view(N, 1, H, W).float()  # sum(n(p_k >= 0.5))
-
         """
         replace iter with matrix operation
         fast speed methods
@@ -214,88 +200,8 @@ class OrdinalRegressionLayer(nn.Module):
 
         ord_c1 = ord_c[:, 1, :].clone()
         ord_c1 = ord_c1.view(-1, ord_num, H, W)
-        decode_c = torch.sum(ord_c1, dim=1).view(-1, 1, H, W)
+        decode_c = torch.sum((ord_c1 > 0.5), dim=1).view(-1, 1, H, W)
         return decode_c, ord_c1
-
-
-class ResNet(nn.Module):
-    def __init__(self, in_channels=3, pretrained=True, freeze=True):
-        super(ResNet, self).__init__()
-        pretrained_model = torchvision.models.__dict__['resnet{}'.format(101)](pretrained=pretrained)
-
-        self.channel = in_channels
-
-        self.conv1 = nn.Sequential(collections.OrderedDict([
-            ('conv1_1', nn.Conv2d(self.channel, 64, kernel_size=3, stride=2, padding=1, bias=False)),
-            ('bn1_1', nn.BatchNorm2d(64)),
-            ('relu1_1', nn.ReLU(inplace=True)),
-            ('conv1_2', nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1, bias=False)),
-            ('bn_2', nn.BatchNorm2d(64)),
-            ('relu1_2', nn.ReLU(inplace=True)),
-            ('conv1_3', nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1, bias=False)),
-            ('bn1_3', nn.BatchNorm2d(128)),
-            ('relu1_3', nn.ReLU(inplace=True))
-        ]))
-
-        # print(pretrained_model._modules['layer1'][0].conv1)
-
-        self.maxpool = pretrained_model._modules['maxpool']
-        self.layer1 = pretrained_model._modules['layer1']
-        self.layer1[0].conv1 = nn.Conv2d(128, 64, kernel_size=(1, 1), stride=(1, 1), bias=False)
-        self.layer1[0].downsample[0] = nn.Conv2d(128, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
-
-        self.layer2 = pretrained_model._modules['layer2']
-
-        self.layer3 = pretrained_model._modules['layer3']
-        self.layer3[0].conv2 = nn.Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
-        self.layer3[0].downsample[0] = nn.Conv2d(512, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False)
-
-        self.layer4 = pretrained_model._modules['layer4']
-        self.layer4[0].conv2 = nn.Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
-        self.layer4[0].downsample[0] = nn.Conv2d(1024, 2048, kernel_size=(1, 1), stride=(1, 1), bias=False)
-
-        # clear memory
-        del pretrained_model
-
-        if pretrained:
-            weights_init(self.conv1, type='kaiming')
-            weights_init(self.layer1[0].conv1, type='kaiming')
-            weights_init(self.layer1[0].downsample[0], type='kaiming')
-            weights_init(self.layer3[0].conv2, type='kaiming')
-            weights_init(self.layer3[0].downsample[0], type='kaiming')
-            weights_init(self.layer4[0].conv2, 'kaiming')
-            weights_init(self.layer4[0].downsample[0], 'kaiming')
-        else:
-            weights_init(self.modules(), type='kaiming')
-
-        if freeze:
-            self.freeze()
-
-    def forward(self, x):
-        # print(pretrained_model._modules)
-
-        x = self.conv1(x)
-
-        # print('conv1:', x.size())
-
-        x = self.maxpool(x)
-
-        # print('pool:', x.size())
-
-        x1 = self.layer1(x)
-        # print('layer1 size:', x1.size())
-        x2 = self.layer2(x1)
-        # print('layer2 size:', x2.size())
-        x3 = self.layer3(x2)
-        # print('layer3 size:', x3.size())
-        x4 = self.layer4(x3)
-        # print('layer4 size:', x4.size())
-        return x4
-
-    def freeze(self):
-        for m in self.modules():
-            if isinstance(m, nn.BatchNorm2d):
-                m.eval()
 
 
 class DORN(nn.Module):
@@ -304,7 +210,7 @@ class DORN(nn.Module):
 
         self.output_size = output_size
         self.channel = channel
-        self.feature_extractor = ResNet(in_channels=channel, pretrained=pretrained, freeze=freeze)
+        self.feature_extractor = resnet101(pretrained=pretrained)
         self.aspp_module = SceneUnderstandingModule()
         self.orl = OrdinalRegressionLayer()
 
@@ -334,7 +240,7 @@ class DORN(nn.Module):
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"  # 默认使用GPU 0
 
 if __name__ == "__main__":
-    model = DORN()
+    model = DORN(pretrained=False)
     model = model.cuda()
     model.eval()
     image = torch.randn(1, 3, 385, 513)
