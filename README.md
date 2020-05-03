@@ -11,6 +11,6 @@ This is a PyTorch implementation of [Deep Ordinal Regression Network for Monocul
 #### NYU Depth V2
 Not Implemented.
  
-#### Kitti
+#### KITTI
 According to [the pull request](https://github.com/dontLoveBugs/DORN_pytorch/pull/19), we should move away from eigen split and switch to [kiiti depth benchmark](http://www.cvlibs.net/datasets/kitti/eval_depth.php?benchmark=depth_completion). More details, please see [SupervisedDepthPrediction](https://github.com/dontLoveBugs/SupervisedDepthPrediction).
 
