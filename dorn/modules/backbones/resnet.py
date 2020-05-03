@@ -1,9 +1,12 @@
+#!/usr/bin/python3
 # -*- coding: utf-8 -*-
 """
- @Time    : 2019/3/3 19:55
- @Author  : Wang Xin
- @Email   : wangxin_buaa@163.com
+@Time    : 2020-05-02 16:37
+@Author  : Wang Xin
+@Email   : wangxin_buaa@163.com
+@File    : resnet.py
 """
+
 
 import torch
 import torch.nn as nn
@@ -117,18 +120,23 @@ class ResNet(nn.Module):
                 m.eval()
 
 
-def resnet101(pretrained=True):
-    resnet101 = ResNet(Bottleneck, [3, 4, 23, 3])
+class ResNetBackbone(nn.Module):
 
-    if pretrained:
-        # saved_state_dict = torch.load('./network/pretrained_models/resnet101-imagenet.pth')
-        saved_state_dict = torch.load('./pretrained_models/resnet101-imagenet.pth')
-        new_params = resnet101.state_dict().copy()
-        for i in saved_state_dict:
-            i_parts = i.split('.')
-            if not i_parts[0] == 'fc':
-                new_params['.'.join(i_parts[0:])] = saved_state_dict[i]
+    def __init__(self, pretrained=True):
+        super().__init__()
+        self.backbone = ResNet(Bottleneck, [3, 4, 23, 3])
 
-        resnet101.load_state_dict(new_params)
+        if pretrained:
+            # saved_state_dict = torch.load('./network/pretrained_models/resnet101-imagenet.pth')
+            saved_state_dict = torch.load('./dp/modules/backbones/pretrained_models/resnet101-imagenet.pth',
+                                          map_location="cpu")
+            new_params = self.backbone.state_dict().copy()
+            for i in saved_state_dict:
+                i_parts = i.split('.')
+                if not i_parts[0] == 'fc':
+                    new_params['.'.join(i_parts[0:])] = saved_state_dict[i]
 
-    return resnet101
+            self.backbone.load_state_dict(new_params)
+
+    def forward(self, input):
+        return self.backbone(input)

@@ -124,3 +124,4 @@ dmypy.json
 # JPG PNG
 *.jpg
 *.png
+*.pth
