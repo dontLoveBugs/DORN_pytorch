@@ -6,6 +6,9 @@ The entire codebase has been updated, and some layers and loss functions have be
 ### Introduction
 This is a PyTorch implementation of [Deep Ordinal Regression Network for Monocular Depth Estimation](http://arxiv.org/abs/1806.02446). 
 
+### Pretrained Model
+The resnet backbone of DORN, which has three conv in first conv layer, is different from original resnet. The pretrained model of the resnet backbone can download from [MIT imagenet pretrained resnet101](http://sceneparsing.csail.mit.edu/model/pretrained_resnet/resnet101-imagenet.pth).
+
 ### Datasets
 
 #### NYU Depth V2
