@@ -67,11 +67,9 @@ class SceneUnderstandingModule(nn.Module):
         )
         self.concat_process = nn.Sequential(
             nn.Dropout2d(p=0.5),
-            nn.Conv2d(512 * 5, 2048, 1),
-            nn.ReLU(inplace=True),
+            conv_bn_relu(batch_norm, 512*5, 2048, kernel_size=1, padding=0),
             nn.Dropout2d(p=0.5),
-            nn.Conv2d(2048, ord_num * 2, 1),  # KITTI 142 NYU 136 In paper, K = 80 is best
-            # nn.UpsamplingBilinear2d(size=(385, 513))
+            nn.Conv2d(2048, ord_num * 2, 1)
         )
 
     def forward(self, x):
