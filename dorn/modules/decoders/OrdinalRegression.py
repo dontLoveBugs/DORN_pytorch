@@ -19,7 +19,7 @@ class OrdinalRegressionLayer(nn.Module):
     def forward(self, x):
         """
         :param x: NxCxHxW, N is batch_size, C is channels of features
-        :return: ord_label is ordinal outputs for each spatial locations , N x H x W
+        :return: ord_label is ordinal outputs for each spatial locations , N x 1 x H x W
                  ord prob is the probability of each label, N x OrdNum x H x W
         """
         N, C, H, W = x.size()

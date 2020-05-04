@@ -13,30 +13,48 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from dorn.modules.backbones.resnet import ResNetBackbone
-from dorn.modules.encoders.KITTISceneModule import SceneUnderstandingModule as KittiSceneModule
-from dorn.modules.encoders.NYUSceneModule import SceneUnderstandingModule as NyuSceneModule
+from dorn.modules.encoders.SceneUnderstandingModule import SceneUnderstandingModule
 from dorn.modules.decoders.OrdinalRegression import OrdinalRegressionLayer
 from dorn.modules.losses.ordinal_regression_loss import OrdinalRegressionLoss
 
 
 class DepthPredModel(nn.Module):
 
-    def __init__(self, ord_num=90, gamma=1.0, beta=80.0, scene="Kitti", discretization="SID", pretrained=True):
+    def __init__(self, ord_num=90, gamma=1.0, beta=80.0,
+                 input_size=(385, 513), kernel_size=16, pyramid=[8, 12, 16],
+                 batch_norm=False,
+                 discretization="SID", pretrained=True):
         super().__init__()
+        assert len(input_size) == 2
+        assert isinstance(kernel_size, int)
         self.ord_num = ord_num
         self.gamma = gamma
         self.beta = beta
         self.discretization = discretization
 
         self.backbone = ResNetBackbone(pretrained=pretrained)
-        self.SceneUnderstandingModule = KittiSceneModule(ord_num) if scene == "Kitti" else NyuSceneModule(ord_num)
+        self.SceneUnderstandingModule = SceneUnderstandingModule(ord_num, size=input_size,
+                                                                 kernel_size=kernel_size,
+                                                                 pyramid=pyramid,
+                                                                 batch_norm=batch_norm)
         self.regression_layer = OrdinalRegressionLayer()
         self.criterion = OrdinalRegressionLoss(ord_num, beta, discretization)
 
     def forward(self, image, target=None):
+        """
+        :param image: RGB image, torch.Tensor, Nx3xHxW
+        :param target: ground truth depth, torch.Tensor, NxHxW
+        :return: output: if training, return loss, torch.Float,
+                         else return {"target": depth, "prob": prob, "label": label},
+                         depth: predicted depth, torch.Tensor, NxHxW
+                         prob: probability of each label, torch.Tensor, NxCxHxW, C is number of label
+                         label: predicted label, torch.Tensor, NxHxW
+        """
         N, C, H, W = image.shape
         feat = self.backbone(image)
         feat = self.SceneUnderstandingModule(feat)
+        # print("feat shape:", feat.shape)
+        # feat = F.interpolate(feat, size=(H, W), mode="bilinear", align_corners=True)
         if self.training:
             prob = self.regression_layer(feat)
             loss = self.criterion(prob, target)
